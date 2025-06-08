@@ -1,0 +1,240 @@
+(ifndef dynmem_h
+(define dynmem_h)
+
+(include "stdlib.llpl")
+
+(comment 'Алгоритм «пометить и подмести» + двунаправленный список блоков. Метод поиска — наилучший подходящий.'
+    START_OF_HEAP 'начало кучи'
+    'Алгоритм работы:'
+    'У меня в программе компилируются объектные ссылки'
+
+    'Они заполнены какими-то объектами в куче.'
+    'Если мы вызываем функции alloc, то мы пытаемся выделить объект в куче.'
+    'То есть пытаемся выделить в куче объект, если вернулся 0, то проходимся по всей куче рекурсивно'
+    'Освобождаем помеченные объекты.'
+    'После чего снова делаем попытку, если так и не получилось, то возвращаем 0.'
+)
+
+(const USED__ "=" 1)
+(const FREE__ "=" 0)
+(const UNREACHED__ "=" 2)
+(const UNSCANNED__ "=" 3)
+(const SCANNED__   "=" 4)
+
+(struct gc_info__
+    (gc_info_size__ int)
+    (gc_info_prev__ ptr)
+    (gc_info_next__ ptr)
+    (gc_info_flags__ int)
+    (gc_info_nrefs__ int)
+)
+
+(var HEAP_SIZE 1 )
+
+(function init_heap ()
+    (var (heap ptr)(last ptr))
+    
+    (comment 'Инициализируем размер кучи как половина от свободного пространства')
+    (heap "=" (L START_OF_HEAP))
+    (HEAP_SIZE "=" (((L MEMORY_SIZE) "-" (L START_OF_HEAP)) "/" 2))
+    (comment (HEAP_SIZE "=" 30))
+    
+    (comment "Мы инициализируем первую часть кучи как незанятую")
+    ((heap "->" gc_info_flags__) "=" FREE__)
+    ((heap "->" gc_info_size__)  "=" (L HEAP_SIZE))
+    ((heap "->" gc_info_prev__)  "=" 0)
+    ((heap "->" gc_info_next__)  "=" 0)
+)
+
+
+(function alloc__ (type nrefs)
+    (var (block ptr))
+    (comment 'Пытаемся выделить память в куче')
+    (block "=" (call malloc (type "->" gc_info_size__)))
+    
+    (comment 'Если выделили успешно, возвращаем адрес')
+    (if ((L block) "<>" 0)
+        ((block "->" gc_info_nrefs__) "=" (L nrefs))
+        (return (L block))
+    )
+    (comment 'Если выделить не получилось, то производим markAndSweep')
+    (call markAndSweep)
+    (comment 'Делаем еще одну попытку выделить и возвращаем ее результат')
+    (block "=" (call malloc (type "->" gc_info_size__)))
+    
+    (comment 'Если выделили успешно, возвращаем адрес')
+    (if ((L block) "<>" 0)
+        ((block "->" gc_info_nrefs__) "=" (L nrefs))
+        (return (L block))
+    )
+    (return 0)
+)
+
+(function malloc (size)
+    (var(b ptr)(bestBlock ptr)(bestSize int))
+    
+    (comment "Начинаем с блока в начале кучи")
+    (b "=" (L START_OF_HEAP))
+    (bestSize "=" ("-" 1))
+    (bestBlock "=" 0)
+    (while ((L b) "<>" 0) (comment "Пока мы не достигли последнего блока(обозначили его размер как 0)")
+        (if ( ((L (b "->" gc_info_flags__)) "==" FREE__)
+            and ((L (b "->" gc_info_size__)) ">=" (L size)))
+            
+            (if ((L bestBlock) "==" 0)
+                (bestSize "=" (L (b "->" gc_info_size__)))
+                (bestBlock "=" (L b))
+            else
+                (if ((L bestSize) ">" (L (b "->" gc_info_size__))) (comment "если предыдущий вариант хуже...")
+                    (bestSize "=" (L (b "->" gc_info_size__)))
+                    (bestBlock "=" (L b))
+                )
+            )
+        )
+        
+        (b "=" (L (b "->" gc_info_next__)))
+    )
+    (asm '<malloc>')
+    (if ((L bestBlock) "==" 0) (comment "Если мы не нашли ни одного блока, то возвращаем 0")
+        (return 0)
+    else (comment "Иначе разбиваем блок и вовзращаем адрес нового блока")
+        
+        (call split_block (L bestBlock) (L size))
+        
+        (comment "Инициализируем количество ссылок в выделенном блоке")
+        
+        (asm '<alloctrue>')
+        (return (L bestBlock))
+    )
+)
+
+(comment "Функция разбивает блок на две части, первая - свободная остается, вторая - занятой")
+(function split_block (block size)
+    (var (newBlock ptr))
+    
+    (comment "Если размер блока больше, чем нужно")
+    (if ((L (block "->" gc_info_size__)) ">" (L size))
+        (comment "Мы должны откусить от блока size слов вначале")
+        (newBlock "=" ((L block) "+" (L size)))
+        (asm '<splitinit>')
+        
+        
+        (comment "block-1 block newBlock block+1")
+        ((newBlock "->" gc_info_size__ ) "=" ((L (block "->" gc_info_size__)) "-" (L size)))
+        ((newBlock "->" gc_info_flags__) "=" FREE__)
+        ((newBlock "->" gc_info_next__ ) "=" (L (block "->" gc_info_next__)))
+        ((newBlock "->" gc_info_prev__ ) "=" (L block))
+        (if ( (L (block "->" gc_info_next__)) "<>" 0)
+            (block (var (tmp ptr))
+                (tmp "=" (L (newBlock "->" gc_info_next__)))
+                ((tmp "->" gc_info_prev__) "=" (L newBlock))
+            )
+        )
+        
+        ((block "->" gc_info_size__ ) "=" (L size))
+        
+        ((block "->" gc_info_next__ ) "=" (L newBlock))
+    )
+    (comment "Если размер блока, не больше, то не делим")
+    (comment "Помечаем блок как занятый, так как он все равно будет использоваться в куче. Иначе, при полном совпадении GC будет думать, что блок пустой и выделять постоянно его")
+    ((block "->" gc_info_flags__) "=" USED__)
+    
+    (asm '<splitresult>')
+)
+
+(function recursiveMark (objectPtr)
+    (comment "Если ссылка не проинициализирована или блок уже просканирован, то завершаем функцию")
+    
+    (if ( ((L objectPtr) "==" 0) or ((L (objectPtr "->" gc_info_flags__)) "==" SCANNED__))
+        (return 0)
+    )
+    
+    (comment "Помечаем, что блок просканирован")
+    ((objectPtr "->" gc_info_flags__) "=" SCANNED__)
+    
+    (comment "Проходим по всем его ссылкам")
+    (block (var (i int))
+        (i "=" 0)
+        (while ((L i) "<" (L (objectPtr "->" gc_info_nrefs__)))
+            (call recursiveMark (L ((objectPtr "->" gc_info__) "+" (L i)))) (comment "указатель на новый объект")
+            (i "++") 
+        )
+    )
+)
+(function recursiveLocalRefs ()
+    (var (fakePointer ptr)(i int)(refsCount int))
+    
+    (comment "Устанавливаем указатель фрейма для итерации")
+    (fakePointer "=" (asm GETFP))
+    (while ((L fakePointer) "<>" 0)
+        (asm "<recloc>")
+        (refsCount "=" (L ((L fakePointer) "-" 1)))
+        
+        (i "=" 1)
+        (while ((L i) "<=" (L refsCount))
+            (call recursiveMark (L (((L fakePointer) "-" 1)"-" (L i))))
+            (i "++")
+        )
+        (fakePointer "=" (L (L fakePointer)))
+    )
+)
+
+
+(function sweep (objectPtr)
+    (var (nextBlock ptr))
+    (comment "Мы идем по блокам с начала до конца. Мы помечаем этот блок свободным")
+    
+    ((objectPtr "->" gc_info_flags__) "=" FREE__)
+    
+    (comment "Повторяем так, пока не найдем достижимый блок или не дойдем до конца")
+    (comment "Если следующий блок недостижымий")
+    (nextBlock "=" (L (objectPtr "->" gc_info_next__)))
+    
+    (while (((L nextBlock) "<>" 0) and ((L (nextBlock "->" gc_info_flags__)) "<>" SCANNED__))
+        (comment "то расширяем исходный блок на его размер.")
+        (  (objectPtr "->" gc_info_size__) "=" (
+            (L (objectPtr "->" gc_info_size__)) 
+                "+"
+            (L (nextBlock "->" gc_info_size__)))
+        )
+        (nextBlock "=" (L (nextBlock "->" gc_info_next__)))
+    )
+    (( objectPtr "->" gc_info_next__) "=" (L nextBlock))
+    (if ((L nextBlock) "<>" 0)
+        ((nextBlock "->" gc_info_prev__) "=" (L objectPtr))
+    )
+)
+
+(function markAndSweep ()
+    (var (b ptr)(i int))
+    (asm "<markAndSweepStart>")
+    (comment "Пометка всех объектов в куче, как недостижимых.")
+    (b "=" (L START_OF_HEAP))
+    (while ((L b) "<>" 0)
+        ((b "->" gc_info_flags__) "=" UNREACHED__)
+        (b "=" (L (b "->" gc_info_next__)))
+    )
+    
+    (comment "Перебор всех ссылок в корневом множестве (глобальные и локальные ref‐переменные):")
+    
+    (comment "Перебор глобальных переменных")
+    (b "=" (global_refs__ "+" 1)) (comment 'указатель на первую ссылку')
+    (while ((L b) "<=" (global_refs__ "+" (L global_refs__)))
+        (call recursiveMark (L (L b)))
+        (b "++")
+    )
+    (comment "Перебор локальных переменных")
+    (call recursiveLocalRefs)
+    
+    (asm "<markAndSweepMarked>")
+    (comment "Освобождение памяти, занятой объектами, помеченными как недостижимые (фаза подметания)")
+    (b "=" (L START_OF_HEAP))
+    (while ((L b) "<>" 0)
+        (if ((L (b "->" gc_info_flags__)) "==" UNREACHED__)
+            (call sweep (L b))
+        )
+        (b "=" (L (b "->" gc_info_next__)))
+    )
+    (asm '<markAndSweepFinal>')
+)
+)
