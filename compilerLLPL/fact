@@ -1,0 +1,13 @@
+(const int "=" 1)
+
+(function fact(n)
+    (if ((L n) "==" 0)
+        (return 1)
+    else
+        (return ((L n) "*" (call fact ((L n) "-" 1))))
+    )
+)
+
+(function main ()
+    (return (call fact 10))   
+)

@@ -1,0 +1,457 @@
+*$FROM LibraryEx
+$EXTERN ArgList, Map, LoadExpr;
+
+/*
+[x]    Операция присваивания, т.е. (t.Expr "=" t.Expr) может встречаться в выражениях:
+
+    t.Expr ::= …
+        | (t.Expr "=" t.Expr)
+
+    Значением операции присваивания должно быть присвоенное значение.
+
+-----------------------------------------------------------
+[x]    Оператор блока определяет локальные переменные:
+
+    t.Statement ::= …
+      | (block t.LocalVars e.Code)
+
+    Область видимости локальных переменных ограничена этим блоком.
+
+-------------------------------------------------------------
+[x]    Операция блока внутри выражения
+
+    t.Expr ::= …
+      | (let t.LocalVars e.Code t.Expr)
+
+
+Алгоритм работы с константами
+при создании глобальной константы мы берем верхушку с стека global, добавляем в нее константу и возвращаем
+
+Когда мы в локальном поле зрения мы копируем верхушку стека local, добавляем в нее константу и кладем сверху.
+ При выходе из блока мы просто снимаем верхний блок констант и тем самым обновляем поле зрения.
+
+При проверке имеем структуру
+
+e.List ::= t.Pairs*
+t.Pairs ::= (s.Name s.Value)
+
+Кроме этого мы будем запоминать имя текущего блока, которое будет формироваться по следующему правилу.
+Изначально мы находимся в блоке, имя которого совпадает с именем файла без расширение.
+Если мы заходим в функцию, то имя - имя прошлого блока + имя функции
+Если мы заходим внутри в условие, то имя - имя прошлого блока + '__if' + s.Number, где s.Number - номер блока.
+ Нумерация идет сквозная сквозь всю программу.
+Если заходим в цикл,то имя - имя прошлого блока + '__while' + s.Number
+
+Для дополнительных управляющих конструкций позже можно добавить.
+*/
+
+/*************************************START OF PROGRAM*****************************************/
+
+/*Точка входа. Передает аргументы в функцию Main*/
+$ENTRY Go{
+	= <Main <ArgList>>
+}
+
+/*Выводит результат для каждого переданного файла в последовательный вывод*/
+Main{
+	(e.ProgName) e.FileList = <Prout <Map LLPL_ParseFile e.FileList>>;
+}
+
+/*<ParseFile e.FileName> = print all tokens*/
+$ENTRY LLPL_ParseFile{
+	(e.FileName) = <MakeBaseName e.FileName> <CompileLLPL <LoadExpr e.FileName>>;
+}
+
+$ENTRY CompileLLPL{
+    e.AST = <Compile <EraseCommentsFromAST e.AST>> '\n';
+}
+
+/*Очищает дерево программы от блоков комментариев*/
+EraseCommentsFromAST{
+    /*empty*/ = /*empty*/;
+    s.smth = s.smth;
+    (comment e.smth) = /*erase*/;
+    t.smth = t.smth;
+    t.Def e.Tail = <EraseCommentsFromAST t.Def> <EraseCommentsFromAST e.Tail> 
+}
+
+
+/*Делает базовое имя файла. Задумывалось как добавление уникальности в метки и прочее. Не было добавлено.*/
+MakeBaseName{
+	e.FileName '.' e.Ref = <MakeBaseName e.FileName>;
+	e.FileName = <Br blockName '=' e.FileName><Br blockNumber '=' 0>;
+}
+
+
+/*Функция компиляции дерева программы, считанного из файла*/
+Compile{
+	t.Definition e.Tail = <GenDefinition t.Definition> <Compile e.Tail>;
+	/*empty*/ = /*empty*/;
+}
+
+
+/*Функция компиляции определений*/
+GenDefinition{
+	(const s.Name "=" t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
+	    <AddGlobal s.Name s.Value> ';' (const s.Name "=" s.Value) '\n';
+	
+	(struct s.Name e.Fields), <GenStruct (e.Fields) 0> : s.Size = 
+	    <AddGlobal s.Name s.Size> ';' (struct s.Name '...')'\n';
+	
+	(var s.Name t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value = 
+	    '\n:_' <Explode s.Name> '\n' <GenVar () s.Value> '; ' (var s.Name s.Value)'\n';
+	
+	(var s.Name t.ConstExpr "=" e.Definition), <EvalExpr t.ConstExpr> : s.Value = 
+	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) s.Value> '; '(var s.Name s.Value)'\n';
+	
+	(function s.Name (e.Params) e.Body) = 
+	    '\n'<GenFunction s.Name (e.Params) e.Body> '\n';
+}
+
+/**************************OPERATORS*******************************/
+
+/*Отдельная функция для компиляции определения функции в программе*/
+GenFunction{
+	s.Name (e.Params) (var e.Vars) e.Body, 
+	    <SetFunctionName s.Name e.Params> : e.tmp =
+	        ':_'<Explode s.Name>'\n' 
+	        <GenFunctionProlog (e.Params)(e.Vars)><GenBody e.Body><GenFunctionEpilog>;
+    
+    s.Name (e.Params) e.Body, 
+        <SetFunctionName s.Name e.Params> : e.tmp =
+            ':_'<Explode s.Name>'\n' 
+            <GenFunctionProlog (e.Params)()><GenBody e.Body> <GenFunctionEpilog>;
+    
+}
+
+/*Функция, запоминания имени функции и количества параметров*/
+SetFunctionName{
+	s.Name e.Params = <Br function '=' s.Name <Count e.Params>>
+}
+
+/*Проходит по всем параметрам, запоминая их смещения в копилку.*/
+SetDeltaParams{
+    s.Number = ;
+    s.Name s.Number = <AddLocal s.Name '+' s.Number >;
+    e.Params s.Name s.Number = <AddLocal s.Name '+' s.Number > <SetDeltaParams e.Params <Add 1 s.Number>>;
+}
+
+/*Проходит по всем переменным, запоминая их смещения в копилку*/
+SetDeltaVars{
+    s.Number = s.Number;
+    (s.Name t.Expr) s.Number, <Add <EvalExpr t.Expr> s.Number> : s.NewNumber =
+         <AddLocal s.Name '-' s.NewNumber ><SetDeltaVars s.NewNumber>;
+    e.Params (s.Name t.Expr) s.Number, <Add <EvalExpr t.Expr> s.Number> : s.NewNumber =
+         <AddLocal s.Name '-' s.NewNumber> <SetDeltaVars e.Params s.NewNumber>;
+}
+
+
+/*Генерирует пролог функции*/
+GenFunctionProlog{
+	(e.Params)(e.Vars), <NewLocal> (<SetDeltaParams e.Params 2>)(<SetDeltaVars e.Vars 0 >) : {
+        (e.1)(0), <SetLocalCount 0> : e.2 = 'GETFP GETSP SETFP\n';
+        (e.1)(s.Number), <SetLocalCount s.Number> : e.2 = 'GETFP GETSP SETFP\nGETSP 's.Number'SUB SETSP\n';
+    };
+}
+
+/*Вспомогательная функция, считающая количество определений в строке*/
+Count{
+    /**/ = 0;
+    t.1 e.Tail = <Add 1 <Count e.Tail>>;
+}
+
+
+/*Генерирует тело блока, тело функции, тело условий или тело цикла*/
+GenBody{
+	t.Operator e.Tail = <GenOperator t.Operator> <GenBody e.Tail>;
+	/*empty*/ = /*empty*/;
+}
+
+/*Генерирует эпилог функции*/
+GenFunctionEpilog{
+	/*empty*/, <EndLocal> : e.1, <Cp function> : {
+	    s.Name 0 = ':'<EpilogName s.Name>'\n' GETFP SETSP SETFP RET;
+	    s.Name 1 = ':'<EpilogName s.Name>'\n' GETFP SETSP SETFP RET2;
+	    s.Name s.Count = ':'<EpilogName s.Name>'\n' GETFP SETSP SETFP s.Count RETN JMP;
+	};
+}
+
+/*Генерирует метку эпилогая функции*/
+GenFunctionEpilogMetka{
+	/*empty*/, <Cp function> : s.Name s.Number  = <EpilogName s.Name>
+}
+
+/*Генерирует имя эпилога*/
+EpilogName{
+	s.FunctionName = '__epilog_' <Explode s.FunctionName>
+}
+
+
+/*Конкатенирует к базовому имени уникальный номер(AUTOINCREMENT(0,1)) для создания уникальной метки*/
+GenConsMetka{
+	e.BaseName, <Dg blockNumber> : s.Number 
+	= e.BaseName '__' <Symb s.Number> <Br blockNumber '=' <Add s.Number 1>>
+}
+
+
+/*Генерация оператора блока*/
+GenOperator{
+	(t.Target "=" t.Value) = 
+	    <LLPL_GenExpr t.Target 0>           /*... addr*/
+	    <LLPL_GenExpr t.Value 1>            /*... addr value*/
+	    SAVE                           /*... addr value SAVE*/
+	    ';' (t.Target "=" t.Value) '\n';
+	
+	(call t.Name e.Arguments) = 
+	    <LLPL_GenExpr (call t.Name e.Arguments) 0>   /*... value*/
+	    DROP                                    /*... value DROP*/
+	    ';' (call t.Name e.Arguments) '\n';
+	
+	(if t.BoolExpr e.TrueBody else e.FalseBody),
+		(<GenConsMetka 'if_true'>)(<GenConsMetka 'if_false'>)(<GenConsMetka 'if_out'>) : (e.true)(e.false)(e.out)
+	 = <GenBool t.BoolExpr (e.true)(e.false)> '\n'
+	 	':'e.true'\n' <GenBody e.TrueBody> e.out' JMP \n'
+		':'e.false'\n' <GenBody e.FalseBody> ':'e.out '\n';
+		
+	(if t.BoolExpr e.TrueBody),
+		(<GenConsMetka 'if_true'>)(<GenConsMetka 'if_out'>) : (e.true)(e.out)
+	 = <GenBool t.BoolExpr (e.true)(e.out)> '\n'
+	 	':'e.true'\n' <GenBody e.TrueBody> ':'e.out'\n';
+	 	
+	(while t.BoolExpr e.Body),
+		(<GenConsMetka 'while_loop'>)(<GenConsMetka 'while_true'>)(<GenConsMetka 'while_out'>) : (e.loop)(e.true)(e.out)
+	 = ':'e.loop'\n' <GenBool t.BoolExpr (e.true)(e.out)> '\n'
+		':'e.true'\n' <GenBody e.Body> e.loop' JMP\n' ':'e.out'\n';
+	
+	(return t.Expr) = 
+	    <LLPL_GenExpr t.Expr 0>         /*... value*/
+	    SETRV                           /*...              ;RV=value*/
+	    <GenFunctionEpilogMetka>' '     /*... &epilog      ;RV=value*/
+	    JMP                             /*... &epilog JMP  ;RV=value*/
+	    ';' (return t.Expr)'\n';
+	
+	(asm e.ASM) = e.ASM ';ASM\n';
+	
+	/*
+	Оператор блока определяет локальные переменные:
+
+    t.Statement ::= …
+      | (block t.LocalVars e.Code)
+
+    Область видимости локальных переменных ограничена этим блоком.
+	*/
+	
+	(block (var e.LocalVars) e.Code), 
+	(<NewLocal><SetLocalCount <SetDeltaVars e.LocalVars <Cp localCount>>> <Cp localCount>) : (e.1 s.BaseNumber ), 
+	(<GenBody e.Code>)(<EndLocal>) : (e.GeneratedCode) (e.2),
+	 <Sub s.BaseNumber <Cp localCount>> : s.Delta
+	    = GETSP s.Delta SUB SETSP '\n' /*выделение памяти под локальные переменные*/
+	      e.GeneratedCode              /*сгенерированный код блока                */
+	      GETSP s.Delta ADD SETSP      /*очищение памяти от локальных переменных  */
+	      '; block \n';
+	
+	(block e.Code) = <GenBody e.Code> '; block\n';
+}
+
+
+/**********************BOOOOOL EXPRS*******************************/
+/*Генерация булевских операций с добавлением переходов на положительную ветвь и отрицательную ветвь*/
+
+/* t.BoolExpr (e.TrueMetka) (e.FalseMetka) == e.Program */
+GenBool{
+	TRUE (e.TrueMetka)(e.FalseMetka) = e.TrueMetka ' JMP ';
+	FALSE (e.TrueMetka)(e.FalseMetka) = e.FalseMetka ' JMP ';
+	
+	(t.LeftExpr s.RelOp t.RightExpr) (e.TrueMetka)(e.FalseMetka),
+	("<" JLT)(">" JGT)("==" JEQ)("<=" JLE)(">=" JGE)("<>" JNE) : e.1(s.RelOp s.Command)e.2 
+		= <LLPL_GenExpr t.LeftExpr 0> <LLPL_GenExpr t.RightExpr 1> CMP e.TrueMetka ' ' s.Command e.FalseMetka ' ' JMP;
+	
+	(not t.BoolExpr)(e.TrueMetka)(e.FalseMetka) = <GenBool t.BoolExpr (e.FalseMetka)(e.FalseMetka)>;
+	
+	(t.LeftExpr and t.RightExpr) (e.TrueMetka)(e.FalseMetka),
+	    <GenConsMetka 'internal'> : e.InternalMetka
+	=   <GenBool t.LeftExpr (e.InternalMetka)(e.FalseMetka)> '\n'
+	    ':' e.InternalMetka '\n'
+	    <GenBool t.RightExpr (e.TrueMetka)(e.FalseMetka)>;
+	
+	(t.LeftExpr or t.RightExpr) (e.TrueMetka)(e.FalseMetka),
+	    <GenConsMetka 'internal'> : e.InternalMetka
+	=   <GenBool t.LeftExpr (e.TrueMetka)(e.InternalMetka)> '\n'
+	    ':' e.InternalMetka '\n'
+	    <GenBool t.RightExpr (e.TrueMetka)(e.FalseMetka)>;
+}
+
+/********************GLOBAL CONSTRUCTIONS**************************/
+
+/*Генерирует определение переменной*/
+GenVar{
+	(e.Smth) 0 = /*empty*/;
+	() s.Count = '0 ' <GenVar ()<Sub s.Count 1>>;
+	(t.Expr e.Tail) s.Count, <EvalExpr t.Expr> : e.Value = e.Value <GenVar (e.Tail) <Sub s.Count 1>> 
+}
+
+
+/*Генерирует определение структуры данных*/
+/* (t.Fields+) s.Size == s.Size */
+GenStruct{
+	(("-" t.ConstExpr) e.Tail) s.Size, 
+	    <Add <EvalExpr t.ConstExpr> s.Size> : s.NewSize = <GenStruct (e.Tail) s.NewSize>;
+	
+	((s.Name t.ConstExpr) e.Tail) s.Size, 
+	    <Add <EvalExpr t.ConstExpr> s.Size> : s.NewSize = <AddGlobal s.Name s.Size> <GenStruct (e.Tail) s.NewSize>;
+	
+	(/*empty*/) s.Size = s.Size;
+}
+
+/*Вспомогательная функция: вычисляет значение константного выражения. Необходимо для генерации структур и прочих.*/
+EvalExpr{
+	s.Name, <Type s.Name> : 'W' e.1, <GetConst s.Name> : Found e.Value, 
+	e.Value : {
+		'-' s.Number = <Mul s.Number '-1'>;
+		s.Number = s.Number;
+	};
+	
+	s.Number , <Type s.Number> : 'N' e.T = s.Number;
+	
+	s.Name = '_' <Explode s.Name> ' ';
+ 
+	("-" t.Expr) = <Mul <EvalExpr t.Expr> '-1'>;
+	
+	(t.LeftExpr s.BinOp t.RightExpr), ("+" Add) ("-" Sub) ("*" Mul) ("/" Div) ("%" Mod)
+	: e.1 (s.BinOp s.Function) e.2 = <Mu s.Function <EvalExpr t.LeftExpr > <EvalExpr t.RightExpr>>;
+	
+	(asm e.ASM) = '\n' e.ASM '\n';
+}
+
+
+/*Добавление глобальной константы*/
+AddGlobal{
+	s.Name s.Value = <Br global '=' <Dg global> (s.Name s.Value)>;
+}
+/*Добавление нового стека локальных псевдонимов*/
+NewLocal{
+	/*empty*/ = <Br local '=' <Cp local>>;
+}
+/*Задает количество памяти под локальные переменные*/
+SetLocalCount{
+    s.Number = <Br localCount '=' s.Number>;
+}
+/*Получает это количество*/
+GetLocalCount{
+    /**/ = <Cp localCount>
+}
+/*Убирает с стека таблицу локальных переменных*/
+EndLocal{
+	/*empty*/ = <Dg local><Dg localCount>;
+}
+/*Добавляет новый локальный псевдоним*/
+AddLocal{
+	s.Name e.Value = <Br local '=' <Dg local> (s.Name e.Value)>;
+}
+
+/******************ARITH*EXPR**********************/
+
+
+/*Компилирует арифметическое выражение*/
+/*LLPL_GenExpr t.ArithExpr == e.Program
+	e.VarList ::= (s.Name s.Status s.Number)*
+	s.Status ::= A|L
+*/
+
+$ENTRY LLPL_GenExpr{
+	s.Name s.Depth, <GetConst s.Name> : Found e.Value, 
+	e.Value : {
+		'-' s.Number = s.Number NEG;
+		s.Number = s.Number;
+	};
+	
+	s.Name s.Depth, <GetLocal s.Name> : Found e.Value, 
+	e.Value : {
+		'+' s.Number = GETFP s.Number ADD;
+		'-' s.Number = GETFP s.Number SUB;
+	};
+	
+	s.Number s.Depth, <Type s.Number> : 'N' e.T = s.Number;
+	
+	s.Name s.Depth = '_' <Explode s.Name> ' ';
+ 
+	("-" t.Expr) s.Depth = <LLPL_GenExpr t.Expr s.Depth>  NEG;
+	(L t.Expr)   s.Depth = <LLPL_GenExpr t.Expr s.Depth>  LOAD;
+	
+	(call t.FuncExpr e.ArgsExpr) s.Depth = <GenExprFunction t.FuncExpr (e.ArgsExpr) s.Depth>;
+	
+	(t.LeftExpr "=" t.RightExpr) s.Depth = 
+	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*addr*/
+	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*addr value*/
+	    DUP                                     /*addr value value*/
+	    ROT ROT                                 /*value addr value*/
+	    SAVE                                    /*value*/;
+	
+	
+	(t.LeftExpr s.BinOp t.RightExpr) s.Depth = 
+	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*... value1*/
+	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*... value1 value2*/
+	    <GenBinOp s.BinOp>;                     /*... value1 value2 operation*/
+	
+	(asm e.ASM) s.Depth = '\n' e.ASM '\n';
+	
+	(let (var e.LocalVars) e.Code t.Expr) s.Depth,
+	<Add <Cp localCount> s.Depth> : s.Number,
+	(<NewLocal><SetLocalCount <SetDeltaVars e.LocalVars s.Number>> <Cp localCount>) : (e.1 s.BaseNumber ), 
+	(<GenBody e.Code> <LLPL_GenExpr t.Expr 0>)(<EndLocal>) : (e.GeneratedCode) (e.2),
+	 <Sub s.BaseNumber s.Number> : s.Delta =
+	    GETSP s.Delta SUB SETSP ';start let\n'  /*... empt1 empt2 ... enptn*/
+	    e.GeneratedCode                         /*... var1 var2 ... varn result*/
+	    /*smth like RETN*/
+	    s.Delta                                 /*... var1 var2 ... varn result n*/
+	    GETSP                                   /*... var1 var2 ... varn result n &n*/
+        ADD                                     /*... var1 var2 ... varn result &var2*/
+        DUP                                     /*... var1 var2 ... varn result &var2 &var2*/
+        ROT                                     /*... var1 var2 ... varn &var2 result &var2*/
+        SAVE                                    /*... var1 result ... varn &var2*/
+        SETSP                                   /*... var1 result*/
+        SDROP  '; let\n'                        /*... result*/
+	;
+	(let e.Code t.Expr) s.Depth = 
+	    <GenBody e.Code> <LLPL_GenExpr t.Expr> '; let\n';
+}
+/*Отдельная функция для генерации вызова функции. Необходимо для правильной генерации выражений-аргументов*/
+GenExprFunction{
+    t.FuncExpr (/*nothing*/) s.Depth = 
+        <LLPL_GenExpr t.FuncExpr s.Depth> CALL GETRV;
+        
+    t.FuncExpr (t.ArgExpr e.ArgsTail) s.Depth = 
+        <LLPL_GenExpr t.ArgExpr s.Depth> <GenExprFunction t.FuncExpr (e.ArgsTail) <Add s.Depth 1>>;
+}
+
+/*Функция получения значения константы*/
+GetConst{
+	s.Name, <Cp global> : e.1 (s.Name e.Value) e.2 = Found e.Value;
+	s.Name = NotFound;
+}
+
+/*Функция получения значения локальной переменной - сдвиг относительно FP*/
+GetLocal{
+	s.Name, <Cp local> : e.1 (s.Name e.Value) e.2 = Found e.Value;
+	s.Name = NotFound;
+}
+
+/*Функция транслятор бинарных операций*/
+GenBinOp{
+	"+" = ADD;
+	"-" = SUB;
+	"*" = MUL;
+	"/" = DIV;
+	"%" = MOD;
+	"&" = AND;
+	"|" = OR;
+	"~" = XOR;
+}
+
+/*Функция обращения объектного выражения*/
+Reverse{
+	t.A e.Tail = <Reverse e.Tail> t.A;
+	/*empty*/ = /*empty*/;
+}
+
+

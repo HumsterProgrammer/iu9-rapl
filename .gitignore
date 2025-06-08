@@ -42,3 +42,7 @@ ref5_231220/
 *.rsl
 #compiled asm files
 *.asmbl
+#tool scripts
+compilerLLPL/compile
+compilerLLPL/interpret
+compilerLLPL/trace
