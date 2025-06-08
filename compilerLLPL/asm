@@ -1,2 +1,2 @@
 #!/usr/bin/bash
-java -cp ../build/AsmInt AsmInt.AsmInt runtimelib $@
+java -cp ../build/ AsmInt.AsmInt runtimelib $@
