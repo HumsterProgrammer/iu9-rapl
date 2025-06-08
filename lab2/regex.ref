@@ -1,0 +1,64 @@
+*$FROM LibraryEx
+$EXTERN ArgList, Map, LoadExpr;
+
+/*Индивидуальный вариант
+Символьная функция
+Регулярное выражение описано следующим абстрактным синтаксисом:
+RegEx → ∅ | ε | SYMBOL | RegEx ⋃ RegEx | RegEx · RegEx | RegEx*
+Здесь ∅ — пустое множество, ⋃ — объединение, · — конкатенация.
+Требуется написать функцию <Simplify t.RegEx> == t.RegEx, упрощающую регулярное выражение:
+    r∅ = ∅r = ∅
+    r ∪ ∅ = ∅ ∪ r = r
+    rε = εr = r
+    ε* = ∅* = ε
+*/
+
+$ENTRY Go{
+	= <Main <ArgList>>
+}
+
+Main{
+	(e.ProgName) /*empty*/  = <RegexProcess ('regextest')>;
+	(e.ProgName) e.FileList = <Map RegexProcess e.FileList>;
+}
+
+$ENTRY RegexProcess{
+	(e.FileName) = <Prout <Simplify <LoadExpr e.FileName>>>
+}
+/*
+t.RegEx ::= EmptySet
+	| EmptyWord
+	| s.SYMBOL 
+	| (t.RegEx Union t.RegEx)
+	| (t.RegEx Concat t.RegEx)
+	| (t.RegEx Star)
+	
+<Simplify t.RegEx> == t.RegEx
+*/
+
+Simplify{
+	(t.RegEx Concat EmptySet) = EmptySet;
+	(EmptySet Concat t.RegEx) = EmptySet;
+	(EmptySet Union t.RegEx) = <Simplify t.RegEx>;
+	(t.RegEx Union EmptySet) = <Simplify t.RegEx>;
+	(EmptyWord Concat t.RegEx) = <Simplify t.RegEx>;
+	(t.RegEx Concat EmptyWord) = <Simplify t.RegEx>;
+	(EmptySet) Star = EmptyWord;
+	(EmptyWord) Star = EmptyWord;
+	(t.A Union t.B),
+		(<Simplify t.A>) (<Simplify t.B>) : {
+			(t.RegEx) (EmptySet) = t.RegEx;
+			(EmptySet) (t.RegEx) = t.RegEx;
+			(t.RegA) (t.RegB) = (t.RegA Union t.RegB);
+		};
+	(t.A Concat t.B),
+		(<Simplify t.A>) (<Simplify t.B>) : {
+			(t.RegEx) (EmptySet) = EmptySet;
+			(EmptySet) (t.RegEx) = EmptySet;
+			(t.RegEx) (EmptyWord) = t.RegEx;
+			(EmptyWord)(t.RegEx) = t.RegEx;
+			(t.RegA) (t.RegB) = (t.RegA Concat t.RegB);
+		};
+	(t.RegEx) Star = (<Simplify t.RegEx>) Star;
+	t.Other = t.Other;
+}

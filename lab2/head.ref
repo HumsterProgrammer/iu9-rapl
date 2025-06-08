@@ -1,0 +1,60 @@
+*$FROM LibraryEx
+$EXTERN ArgList, Map, LoadFile;
+
+/*Индивидуальный вариант
+UNIX-утилита
+
+Программа head, распечатывающая первые несколько строк каждого файла.
+```
+head [-‹число›] ‹имена файлов›…
+```
+Если количество строк не указано, подразумевается 10.
+
+При реализации программы на Рефале-5 ключ командной строки должен начинаться на знак «+», т.к. Arg аргументы, начинающиеся на «-», игнорирует.
+*/
+
+$ENTRY Go {
+	= <Main <ArgList>>
+}
+
+Main{
+	(e.ProgName) ('+' e.Count) (e.OneFile) = <HeadFile (e.Count) NoHeader (e.OneFile)>;
+	(e.ProgName) ('+' e.Count) e.FileList = <Map (HeadFile (e.Count) WithHeader) e.FileList>;
+	(e.ProgName) ('+' e.Count) /*empty*/ = <Prout <HeadSTDIO e.Count >>;
+	
+	(e.ProgName) /*Пусто*/ (e.OneFile) = <HeadFile ('10') NoHeader (e.OneFile)>;
+	(e.ProgName) /*Пусто*/ e.FileList = <Map (HeadFile ('10') WithHeader) e.FileList>;
+	(e.ProgName) /* empty */ = <Prout <HeadSTDIO 10 >>;
+}
+
+WithHeader {
+    e.FileName = <Prout '==>' e.FileName '<=='>;
+}
+
+NoHeader {
+    e.FileName = /* do nothing */;
+}
+
+$ENTRY HeadFile {
+	(e.Count) s.Header (e.FileName)
+	    = <Mu s.Header e.FileName> <Prout <HeadText (<Numb e.Count>) <Lines <LoadFile e.FileName>>>>
+}
+HeadSTDIO{
+	0 = /*empty*/;
+	1 = <Card>;
+	e.Count = <Card> '\n' <HeadSTDIO <Sub e.Count 1>> 
+}
+
+Lines {
+	e.Line '\n' e.Tail = (e.Line) <Lines e.Tail>;
+	e.NoCat = (e.NoCat);
+	/* Пусто */ = /* Пусто */
+}
+
+HeadText{
+	(0) (e.Val) = /* Пусто */;
+	(1) ((e.Line) e.Tail) =  e.Line;
+	(e.Count) ((e.Line)) = e.Line;
+	(e.Count) ((e.Line) e.Tail) = e.Line '\n' <HeadText (<Sub e.Count 1>) (e.Tail)>;
+	(e.Count) () =  /* Пусто */;
+}
