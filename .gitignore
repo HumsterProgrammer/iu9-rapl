@@ -46,3 +46,4 @@ ref5_231220/
 compilerLLPL/compile
 compilerLLPL/interpret
 compilerLLPL/trace
+compilerLLPL/log
