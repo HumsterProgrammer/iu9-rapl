@@ -1,5 +1,5 @@
 (ifndef dynmem_h
-(define dynmem_h)
+(const dynmem_h "=" 0)
 
 (include "stdlib.llpl")
 
@@ -94,7 +94,7 @@
         
         (b "=" (L (b "->" gc_info_next__)))
     )
-    (asm '<malloc>')
+    (asm "<malloc>")
     (if ((L bestBlock) "==" 0) (comment "Если мы не нашли ни одного блока, то возвращаем 0")
         (return 0)
     else (comment "Иначе разбиваем блок и вовзращаем адрес нового блока")
@@ -103,7 +103,7 @@
         
         (comment "Инициализируем количество ссылок в выделенном блоке")
         
-        (asm '<alloctrue>')
+        (asm "<alloctrue>")
         (return (L bestBlock))
     )
 )
@@ -116,7 +116,7 @@
     (if ((L (block "->" gc_info_size__)) ">" (L size))
         (comment "Мы должны откусить от блока size слов вначале")
         (newBlock "=" ((L block) "+" (L size)))
-        (asm '<splitinit>')
+        (asm "<splitinit>")
         
         
         (comment "block-1 block newBlock block+1")
@@ -139,7 +139,7 @@
     (comment "Помечаем блок как занятый, так как он все равно будет использоваться в куче. Иначе, при полном совпадении GC будет думать, что блок пустой и выделять постоянно его")
     ((block "->" gc_info_flags__) "=" USED__)
     
-    (asm '<splitresult>')
+    (asm "<splitresult>")
 )
 
 (function recursiveMark (objectPtr)
@@ -235,6 +235,6 @@
         )
         (b "=" (L (b "->" gc_info_next__)))
     )
-    (asm '<markAndSweepFinal>')
+    (asm "<markAndSweepFinal>")
 )
 )

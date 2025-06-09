@@ -1,6 +1,6 @@
 
 (ifndef stdlib_h
-(define stdlib_h )
+(const stdlib_h "=" 0)
 
 (const int "=" 1)
 (const ptr "=" 1)

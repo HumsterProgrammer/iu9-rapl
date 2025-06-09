@@ -1,9 +1,15 @@
 *$FROM LibraryEx
 $EXTERN ArgList, Map, LoadExpr;
 
+/*
+
+НУИЯП++ с виртуальным множественным наследованием.
+
+*/
+
 /*Точка входа. Передает аргументы в функцию Main*/
 $ENTRY Go{
-	= <Main <ArgList>>
+	= <Main <ArgList>> <Prout ';' <Dgall>>
 }
 
 /*Выводит результат для каждого переданного файла в последовательный вывод*/
@@ -31,37 +37,35 @@ $ENTRY LLPL_ParseFile{
 }
 
 $ENTRY CompileLLPL{
-    e.AST = <Compile <Ord <LLPLDynMem_MacroPreprocess e.AST>>> '\n';
+    e.AST = <Compile <Ord <LLPL_MacroPreprocess e.AST>>> '\n';
 }
 
 /*Предобработка макроопераций */
-$ENTRY LLPLDynMem_MacroPreprocess{
+$ENTRY LLPL_MacroPreprocess{
     /*empty*/ = /*empty*/;
     s.smth = s.smth;
     
     (comment e.smth) = /*erase*/; /*Очищает комментарии*/
     
-    (include s.FileName) = <LLPLDynMem_MacroPreprocess <LoadExpr <Cp libPath>'/'<Explode s.FileName>>>; /*(include "lib.h")*/
+    (include s.FileName) = <LLPL_MacroPreprocess <LoadExpr <Cp libPath>'/'<Explode s.FileName>>>; /*(include "lib.h")*/
     
-    /*Немного костыльно, но в время препроцесса создаются define константы,
-     аналогично глобальным константам, которые можно будет использовать везде в программе, а инициализация не сохраняется*/
-    (define s.Name) = <AddGlobal s.Name "define">;
-    (define s.Name t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
-        <AddGlobal s.Name s.Value>;
+    /*Немного костыльно: вместо сишного define использую const, которые теперь можно объявить где угодно в программе*/
+    (const s.Name "=" t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
+	    <AddGlobal s.Name s.Value> <Prout ';' (const s.Name "=" s.Value) >;
     
     /*вместо define будут использоваться константы*/
     (ifdef s.Name e.Body), <GetConst s.Name> : {
-        Found e.Value = <LLPLDynMem_MacroPreprocess e.Body>;
+        Found e.Value = <LLPL_MacroPreprocess e.Body>;
         NotFound = /*<Prout s.Name 'not defined'>*/;
     };
     (ifndef s.Name e.Body), <GetConst s.Name> : {
         Found e.Value = /*<Prout s.Name 'defined'>*/;
-        NotFound = <LLPLDynMem_MacroPreprocess e.Body>;
+        NotFound = <LLPL_MacroPreprocess e.Body>;
     };
     
     
-    (e.smth) = (<Map LLPLDynMem_MacroPreprocess e.smth>);
-    e.smth = <Map LLPLDynMem_MacroPreprocess e.smth>;
+    (e.smth) = (<Map LLPL_MacroPreprocess e.smth>);
+    e.smth = <Map LLPL_MacroPreprocess e.smth>;
 }
 
 
@@ -76,7 +80,7 @@ MakeBaseName{
 Compile{
 	e.Program,
 	<DynMem_CountRefs e.Program 0> : 
-	    s.Count = <Prout <LLPLDynMem_GenDefinition (var global_refs__ 1 "=" s.Count)>> <Map LLPLDynMem_GenDefinition e.Program>;
+	    s.Count = <Prout <LLPL_GenDefinition (var global_refs__ 1 "=" s.Count)>> <Map LLPL_GenDefinition e.Program>;
 }
 
 DynMem_CountRefs{
@@ -86,12 +90,10 @@ DynMem_CountRefs{
 }
 
 /*Функция компиляции определений*/
-$ENTRY LLPLDynMem_GenDefinition{
-	(const s.Name "=" t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
-	    <AddGlobal s.Name s.Value> ';' (const s.Name "=" s.Value) '\n';
+$ENTRY LLPL_GenDefinition{
 	
 	(struct s.Name e.Fields), <GenStruct (e.Fields) 0> : s.Size = 
-	    <AddGlobal s.Name s.Size> ';' (struct s.Name '...')'\n';
+	    <AddGlobal s.Name s.Size> ';' (struct s.Name e.Fields)'\n';
 	
 	(var s.Name "=" e.Definition) =
 	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) <Count e.Definition>> '; '(var s.Name "=" e.Definition)'\n';
@@ -100,39 +102,180 @@ $ENTRY LLPLDynMem_GenDefinition{
 	    '\n:_' <Explode s.Name> '\n' <GenVar () s.Value> '; ' (var s.Name s.Value)'\n';
 	
 	(var s.Name t.ConstExpr "=" e.Definition), <EvalExpr t.ConstExpr> : s.Value = 
-	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) s.Value> '; '(var s.Name s.Value)'\n';
+	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) s.Value> '; '(var s.Name s.Value "=" e.Definition)'\n';
 	
 	(function s.Name (e.Params) e.Body) = 
 	    '\n'<GenFunction s.Name (e.Params) e.Body> '\n';
-	    
+	
+	(const s.Name "=" t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
+	    <AddGlobal s.Name s.Value> <Prout ';' (const s.Name "=" s.Value) >;
+	 
 	/*======================Dyn Mem===========================*/
-	(refs e.Name) = <Map DynMem_GenRefs e.Name>;
+	(refs e.Names) = <Map DynMem_GenRefs e.Names>;
 	
 	(dynvar s.Name
 	    (refs e.Refs)
 	    e.Fields
-	) = <LLPLDynMem_GenDefinition
+	) = <LLPL_GenDefinition
 	    (struct s.Name 
 	        ("-" gc_info__)
 	        <Map DynMem_DynvarRefs e.Refs>
 	        e.Fields
 	    )>
-	    <LLPLDynMem_GenDefinition (const <Implode 'NREFS_' <Explode s.Name> '__'> "=" <Count e.Refs>)>;
+	    <LLPL_GenDefinition (const <Implode 'NREFS_' <Explode s.Name> '__'> "=" <Count e.Refs>)>;
 	
 	(dynvar s.Name
 	    e.Fields
-	) = <LLPLDynMem_GenDefinition
+	) = <LLPL_GenDefinition
 	    (struct s.Name 
 	        ("-" gc_info__)
 	        e.Fields
 	    )>
-	    <LLPLDynMem_GenDefinition (const <Implode 'NREFS_' <Explode s.Name> '__'> "=" 0)>;
+	    <LLPL_GenDefinition (const <Implode 'NREFS_' <Explode s.Name> '__'> "=" 0)>;
+	
+	/*=======================OOP==============================*/
+	(class s.Name ()
+	    (fields e.Fields)
+	    e.Methods
+	) = <Map LLPL_GenDefinition
+	    (struct <Implode <Explode s.Name>'_core__'>
+	        ("-" 1)
+	        e.Fields
+	    )
+	    (struct <Implode <Explode s.Name>'_class__'>
+	        <Map (LLPLpp_GenClassVirtualTableField s.Name) e.Methods>
+	    )
+	    (struct s.Name
+	        ("-" <Implode <Explode s.Name>'_core__'>)
+	    )
+	    <Map (LLPLpp_GenClassVirtualFunction s.Name) e.Methods>
+	    (var <Implode <Explode s.Name>'_vtbl__'> <Implode <Explode s.Name>'_class__'> "="
+	        <Map (LLPLpp_GenClassVirtualMethodMetka s.Name) e.Methods>
+	    )
+	    (function <Implode 'init__'<Explode s.Name>> (thisPtr)
+	        ((L thisPtr) "=" <Implode <Explode s.Name>'_vtbl__'>)
+	        <Map (LLPLpp_GenInit s.Name) >
+	    )
+	    >;
+	
+	/*класс с наследованием*/
+	(class s.Name (s.Parent e.Base)
+	    (fields e.Fields)
+	    e.Methods
+	), <LLPLpp_GetAllAncestors s.Name s.Parent e.Base> : e.Ancesstors
+	
+	 = <Map LLPL_GenDefinition
+	    (struct <Implode <Explode s.Name>'_core__'>
+	        ("-" 1)
+	        e.Fields
+	    )
+	    (struct <Implode <Explode s.Name> '_class__'>
+	        <Map (LLPLpp_GenClassVirtualFunctionVTableEntry s.Name) e.Methods>
+	        <Map (LLPLpp_GenClassDeltas s.Name) e.Ancesstors>
+	    )
+	    (struct s.Name
+	        ("-" <Implode <Explode s.Name>'_core__'>)
+	        <Map (LLPLpp_GenClassVirtualTableFieldsWithDescent s.Name) e.Ancesstors>
+	    )
+	    <Map (LLPLpp_GenClassVirtualFunction s.Name) e.Methods>
+	    (var <Implode <Explode s.Name> '_vtbl__'> <Implode <Explode s.Name> '_class__'> "="
+	        <Map (LLPLpp_GenMethodsMetkas s.Name 0) e.Methods>
+	        <Map (LLPLpp_GenAncesstorsMetkas s.Name) e.Ancesstors>
+	    )
+	    <Map (LLPLpp_recursiveVtbl s.Name) e.Ancesstors>
+	    (function <Implode 'init__'<Explode s.Name>> (thisPtr)
+	        ((L thisPtr) "=" <Implode <Explode s.Name>'_vtbl__'>)
+	        <Map (LLPLpp_GenInit s.Name) e.Ancesstors>
+	    )
+	>;
 }
 $ENTRY DynMem_GenRefs{
-    s.Name = <Prout <LLPLDynMem_GenDefinition (var s.Name 1 "=" 0)>>;
+    s.Name = <Prout <LLPL_GenDefinition (var s.Name 1 "=" 0)>>;
 }
 $ENTRY DynMem_DynvarRefs{
     s.Ref = (s.Ref 1)
+}
+
+$ENTRY LLPLpp_GenClassDescent{
+    s.Name s.Pred = (<Implode <Explode s.Name>'__'<Explode s.Pred>> s.Pred);
+}
+
+$ENTRY LLPLpp_GenClassVirtualTableField{
+    s.ClassName (method s.Name (this e.Args) e.Code) = (<Implode <Explode s.ClassName> '_' <Explode s.Name>> VTableEntry);
+}
+$ENTRY LLPLpp_GenClassVirtualFunction{
+    s.ClassName (method s.Name (this e.Args) e.Code),
+    <Implode <Explode s.ClassName>'__'<Explode s.Name>> : s.MethodName,
+    <LLPLpp_AddClassMethod s.ClassName s.MethodName> : e.1
+     = 
+        (function s.MethodName 
+            (this e.Args)
+            e.Code
+        );
+}
+$ENTRY LLPLpp_GenClassVirtualFunctionVTableEntry{
+    s.ClassName (method s.Name (this e.Args) e.Code) =
+        (<Implode <Explode s.ClassName>'_'<Explode s.Name>> VTableEntry);
+}
+
+$ENTRY LLPLpp_GenClassVirtualMethodMetka{
+    s.ClassName (method s.Name (this e.Args) e.Code) =
+        <Implode <Explode s.ClassName>'__'<Explode s.Name>>;
+}
+$ENTRY LLPLpp_GenClassVirtualTableFieldsWithDescent{
+    s.Name s.Ancesstor = (<Implode <Explode s.Name>'__'<Explode s.Ancesstor>> <Implode <Explode s.Ancesstor>'_core__'>)
+}
+$ENTRY LLPLpp_GenClassDeltas{
+    s.Name s.Ancesstor = (<Implode <Explode s.Name>'__'<Explode s.Ancesstor>'_offset__'> 1)
+}
+$ENTRY LLPLpp_GenMethodsMetkas{
+    s.Name s.Delta (method s.Method (e.Args) e.Body) = <Implode <Explode s.Name>'__'<Explode s.Method>> s.Delta;
+}
+$ENTRY LLPLpp_GenMethodsMetkasByName{
+    s.Name s.Delta s.Method = s.Method s.Delta;
+}
+$ENTRY LLPLpp_GenAncesstorsMetkas{
+    s.Name s.Ancesstor = <Implode <Explode s.Name>'__'<Explode s.Ancesstor>>;
+}
+$ENTRY LLPLpp_GetAllAncestors{
+    s.Name s.Parent e.Base,
+    <Map (LLPLpp_AddAncesstors s.Name) s.Parent e.Base> : e.1
+     = <Cp <Implode <Explode s.Name>'__ancesstors__'>>;
+}
+$ENTRY LLPLpp_AddAncesstors{
+    s.Name s.Parent,
+    <Implode <Explode s.Name>'__ancesstors__'> : s.BrName,
+    <Unique <Dg s.BrName> s.Parent <Cp <Implode <Explode s.Parent> '__ancesstors__'>>> : e.Ancesstors
+     = <Br s.BrName '=' e.Ancesstors>;
+}
+$ENTRY LLPLpp_AddClassMethod{
+    s.Name s.Method,
+    <Implode <Explode s.Name> '__methods__'> : s.BrName = <Br s.BrName '=' <Cp s.BrName> s.Method>
+}
+Unique{
+    s.x e.1 s.x e.2 = s.x <Unique e.1 e.2>;
+    s.x e.1 = s.x <Unique e.1>;
+    /*empty*/ = /*empty*/;
+}
+
+$ENTRY LLPLpp_recursiveVtblDeltas{
+    s.BaseName s.Delta s.Ancesstor = (<Implode <Explode s.BaseName>'__'<Explode s.Ancesstor>> "-" s.Delta)
+}
+
+$ENTRY LLPLpp_recursiveVtbl{
+    s.BaseClassName s.Ancesstor,
+    <Cp <Implode <Explode s.Ancesstor>'__methods__'>> : e.Methods,
+    <Implode <Explode s.BaseClassName> '__' <Explode s.Ancesstor>> : s.Delta,
+    <Cp <Implode <Explode s.Ancesstor>'__ancesstors__'>> : e.ParentAncesstors
+     = 
+    (var <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>'_vtbl__' > <Implode <Explode s.Ancesstor>'_class__'>
+        "=" 
+        <Map (LLPLpp_GenMethodsMetkasByName s.BaseClassName s.Delta) e.Methods>
+        <Map (LLPLpp_recursiveVtblDeltas s.BaseClassName s.Delta) e.ParentAncesstors>
+    );
+}
+$ENTRY LLPLpp_GenInit{
+    s.BaseClassName s.Ancesstor = (call <Implode 'init__'<Explode s.Ancesstor>> (thisPtr "->" <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>>));
 }
 
 /**************************OPERATORS*******************************/
@@ -258,7 +401,7 @@ GenConsMetka{
 
 
 /*Генерация оператора блока*/
-GenOperator{
+$ENTRY GenOperator{
     (t.Expr "++") = 
         <LLPL_GenExpr t.Expr 0>     /*... addr*/
         DUP                         /*... addr addr*/
@@ -315,7 +458,7 @@ GenOperator{
 	
 	(call t.Name e.Arguments) = 
 	    <LLPL_GenExpr (call t.Name e.Arguments) 0>   /*... value*/
-	    DROP                                    /*... value DROP*/
+	    DROP                                         /*... value DROP*/
 	    ';' (call t.Name e.Arguments) '\n';
 	
 	(if t.BoolExpr e.TrueBody else e.FalseBody),
@@ -343,18 +486,6 @@ GenOperator{
 	
 	(asm e.ASM) = e.ASM ';ASM\n';
 	
-	
-	/*================DynMem====================*/
-	
-	(t.LeftExpr ":-" t.RightExpr) = <GenOperator (t.LeftExpr "=" t.RightExpr)>;
-	
-	(gc-alloc t.Expr s.Type) = <GenOperator (t.Expr "=" (call alloc__ s.Type <Implode 'NREFS_' <Explode s.Type> '__'>))>;
-	
-	(ref-return t.Expr) = <GenOperator (return t.Expr)>;
-	
-	/*=============?DynMem block?=================*/
-	
-	
 	(block (var e.LocalVars) e.Code), 
 	(<NewLocal><SetLocalCount <SetDeltaVars e.LocalVars <Cp localCount>>> <Cp localCount>) : (e.1 s.BaseNumber ), 
 	(<GenBody e.Code>)(<EndLocal>) : (e.GeneratedCode) (e.2),
@@ -365,6 +496,25 @@ GenOperator{
 	      '; block \n';
 	
 	(block e.Code) = <GenBody e.Code> '; block\n';
+	
+	
+	/*================DynMem====================*/
+	
+	/*?DynMem block?*/
+	
+	(t.LeftExpr ":-" t.RightExpr) = <GenOperator (t.LeftExpr "=" t.RightExpr)>;
+	
+	(gc-alloc t.Expr s.Type) = <GenOperator (t.Expr "=" (call alloc__ s.Type <Implode 'NREFS_' <Explode s.Type> '__'>))>;
+	
+	(ref-return t.Expr) = <GenOperator (return t.Expr)>;
+	
+	/*==================OOP=======================*/
+	(init t.ObjectPtr s.ClassName) = 
+	    <GenOperator (call <Implode 'init__'<Explode s.ClassName>> t.ObjectPtr)>;
+	
+	(mcall t.Object s.Method e.ArgsExpr) = 
+	    <LLPL_GenExpr (mcall t.Object s.Method e.ArgsExpr) 0>
+	    DROP;
 }
 
 
@@ -473,6 +623,14 @@ AddLocal{
 */
 
 $ENTRY LLPL_GenExpr{
+
+    /*Синтаксический сахар!: Обращение к полю структуры(по номеру или псевдониму)*/
+	(t.AddrExpr "->" t.FieldExpr) s.Depth =
+	    <LLPL_GenExpr ((L t.AddrExpr) "+" t.FieldExpr) s.Depth>;
+	
+
+    /*===================BASE LLPL==================*/
+
 	s.Name s.Depth, <GetConst s.Name> : Found e.Value, 
 	e.Value : {
 		'-' s.Number = s.Number NEG;
@@ -492,26 +650,26 @@ $ENTRY LLPL_GenExpr{
 	("-" t.Expr) s.Depth = <LLPL_GenExpr t.Expr s.Depth>  NEG;
 	(L t.Expr)   s.Depth = <LLPL_GenExpr t.Expr s.Depth>  LOAD;
 	
-	(call t.FuncExpr e.ArgsExpr) s.Depth = <GenExprFunction t.FuncExpr (e.ArgsExpr) s.Depth>;
-	
-	
-	/*Синтаксический сахар!: Обращение к полю структуры(по номеру или псевдониму)*/
-	(t.AddrExpr "->" t.FieldExpr) s.Depth =
-	    <LLPL_GenExpr ((L t.AddrExpr) "+" t.FieldExpr) s.Depth>;
-	
+	(call t.FuncExpr e.ArgsExpr) s.Depth,
+	<GenExprFunctionArgs e.ArgsExpr s.Depth> : e.CompiledArgs s.NewDepth =
+        e.CompiledArgs
+        <LLPL_GenExpr t.FuncExpr s.NewDepth> 
+        CALL 
+        GETRV;
 	
 	(t.LeftExpr "=" t.RightExpr) s.Depth = 
-	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*addr*/
-	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*addr value*/
-	    DUP                                     /*addr value value*/
-	    ROT ROT                                 /*value addr value*/
-	    SAVE                                    /*value*/;
+	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*... addr*/
+	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*... addr value*/
+	    DUP                                          /*... addr value value*/
+	    ROT ROT                                      /*... value addr value*/
+	    SAVE                                         /*... value*/;
 	
 	
-	(t.LeftExpr s.BinOp t.RightExpr) s.Depth = 
+	(t.LeftExpr s.BinOp t.RightExpr) s.Depth,
+	("+" ADD) ("-" SUB) ("*" MUL) ("/" DIV) ("%" MOD) ("&" AND) ("|" OR) ("~" XOR) : e.1 (s.BinOp s.GenOp) e.2 = 
 	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*... value1*/
 	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*... value1 value2*/
-	    <GenBinOp s.BinOp>;                     /*... value1 value2 operation*/
+	    s.GenOp;                                     /*... value1 value2 operation*/
 	
 	(asm e.ASM) s.Depth = '\n' e.ASM '\n';
 	
@@ -536,15 +694,33 @@ $ENTRY LLPL_GenExpr{
 	;
 	(let e.Code t.Expr) s.Depth = 
 	    <GenBody e.Code> <LLPL_GenExpr t.Expr> '; let\n';
+	    
+	/*======================OOP=================*/
+	(upcast t.ObjectPtr from s.Name to s.BaseName) s.Depth
+	= <LLPL_GenExpr (t.ObjectPtr "+" <Implode <Explode s.Name>'__'<Explode s.BaseName>>) s.Depth>;
+	
+	
+	(mcall t.Object s.Method e.ArgsExpr) s.Depth,
+    <GenExprFunctionArgs e.ArgsExpr s.Depth> : e.CompiledArgs s.NewDepth =
+        e.CompiledArgs                       /*... argn ... arg1*/
+	    <LLPL_GenExpr t.Object s.NewDepth>   /*... argn ... arg1 objptr*/
+	    DUP                                  /*... argn ... arg1 objptr objptr*/
+	    LOAD                                 /*... argn ... arg1 objptr obj_vtbl*/
+	    <LLPL_GenExpr s.Method s.NewDepth>   /*... argn ... arg1 objptr obj_vtbl method*/
+	    ADD                                  /*... argn ... arg1 objptr *functionPtr*/
+	    LOAD                                 /*... argn ... arg1 objptr function*/
+	    CALL                                 /*... */
+        GETRV;                               /*... returnvalue*/
+	    
 }
 /*Отдельная функция для генерации вызова функции. Необходимо для правильной генерации выражений-аргументов*/
-GenExprFunction{
-    t.FuncExpr (/*nothing*/) s.Depth = 
-        <LLPL_GenExpr t.FuncExpr s.Depth> CALL GETRV;
-        
-    t.FuncExpr (t.ArgExpr e.ArgsTail) s.Depth = 
-        <LLPL_GenExpr t.ArgExpr s.Depth> <GenExprFunction t.FuncExpr (e.ArgsTail) <Add s.Depth 1>>;
+GenExprFunctionArgs{
+    /**/ s.Depth = s.Depth;
+    t.ArgExpr e.ArgsTail s.Depth = 
+        <LLPL_GenExpr t.ArgExpr s.Depth>
+        <GenExprFunctionArgs e.ArgsTail <Add s.Depth 1>>
 }
+
 
 /*Функция получения значения константы*/
 GetConst{
@@ -556,18 +732,6 @@ GetConst{
 GetLocal{
 	s.Name, <Cp local> : e.1 (s.Name e.Value) e.2 = Found e.Value;
 	s.Name = NotFound;
-}
-
-/*Функция транслятор бинарных операций*/
-GenBinOp{
-	"+" = ADD;
-	"-" = SUB;
-	"*" = MUL;
-	"/" = DIV;
-	"%" = MOD;
-	"&" = AND;
-	"|" = OR;
-	"~" = XOR;
 }
 
 /*Функция обращения объектного выражения*/
