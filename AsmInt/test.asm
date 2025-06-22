@@ -1,0 +1,10 @@
+START JMP
+0 0 0 0 0 0 0 0 0 0
+:START
+72 OUT ; out h
+101 OUT
+108 OUT 
+108 OUT 
+111 OUT 
+33 OUT 
+;0 HALT ; end of file
