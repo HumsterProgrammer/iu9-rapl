@@ -1,0 +1,76 @@
+
+(include "stdlib.llpl")
+(include "DynMem.llpl")
+
+(dynvar Point
+    (refs Point_nextOne)
+    (Point_x 1)
+    (Point_y 1)
+)
+
+
+(function pointOut (point_ptr)
+    (call out '(')
+    (call numberOut (L ((L point_ptr) "+" Point_x)))
+    (call out ' ')
+    (call numberOut (L ((L point_ptr) "+" Point_y)))
+    (call out ')')
+)
+
+(var test 1)
+
+(var testStr "=" 'Hello, world!\nTest 1: single Points\n' 0)
+(var test2Str "=" 'Test 2: linkedList\n' 0)
+(var errorMsg "=" 'imposible to alloc. HALT!\n'  0)
+
+(function main ()
+    (var (refs One Two) (i int))
+    
+    (call init_heap)
+    
+    (call stringOut testStr)
+    
+    (i "=" 1)
+    (while ((L i) "<" 2)
+        (gc-alloc One Point)
+        (if ((L One) "==" 0)
+            (call stringOut errorMsg)
+            (call halt 4)
+        )
+        (((L One) "+" Point_x) "=" (L i))
+        
+        (call pointOut (L One))
+        (call out '\n')
+        (i "++")
+    )
+    
+    (call stringOut test2Str)
+    
+    (One ":-" 0)
+    (Two ":-" 0)
+    (i "=" 1)
+    (while ((L i) "<" 10)
+        (gc-alloc One Point)
+        (if ((L One) "==" 0)
+            (call stringOut errorMsg)
+            (call halt 4)
+        )
+        (((L One) "+" Point_nextOne) "=" (L Two))
+        (((L One) "+" Point_x) "=" (L i))
+        
+        (i "++")
+        (Two ":-" (L One))
+        
+        (call pointOut (L Two))
+        (call out '\n')
+    )
+    
+    (while ((L Two) "<>" 0)
+        (call pointOut (L Two))
+        (call out '\n')
+        
+        (Two ":-" (L ((L Two) "+" Point_nextOne)))
+    )
+    
+    (return 0)
+)

@@ -1,0 +1,53 @@
+
+(ifndef stdlib_h
+(const stdlib_h "=" 0)
+
+(const int "=" 1)
+(const ptr "=" 1)
+    
+(function approx_getsp ()
+    (var (local 1))
+    (return local)
+)
+
+(function in ()
+    (return (asm IN))
+)
+(function out (char)
+    (asm GETFP 2 ADD LOAD OUT)
+)
+(function getFP ()
+    (return (asm GETFP))
+)
+(function halt (code)
+    (asm GETFP 2 ADD LOAD HALT)
+)
+
+(function recursiveNumberOut__(n)
+    (if ((L n) "==" 0)
+        (return 0)
+    else
+        (block (var (buff int))
+            (buff "=" ((L n) "%" 10))
+            (n "=" ((L n) "/" 10))
+            (call recursiveNumberOut__ (L n))
+            (call out ((L buff) "+" '0'))
+        )
+    )
+)
+
+(function numberOut (n)
+    (if ((L n) "==" 0)
+        (call out '0')
+    else
+        (call recursiveNumberOut__ (L n))
+    )
+)
+(function stringOut (charptr)
+    (while ((L (L charptr)) "<>" 0)
+        (call out (L (L charptr)))
+        (charptr "++")
+    )
+)
+
+)

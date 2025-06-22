@@ -35,3 +35,15 @@ bin/
 build/
 /bin1/
 java/build/**
+
+#refal interpretator
+ref5_231220/
+#refal compiled files
+*.rsl
+#compiled asm files
+*.asmbl
+#tool scripts
+compilerLLPL/compile
+compilerLLPL/interpret
+compilerLLPL/trace
+compilerLLPL/log

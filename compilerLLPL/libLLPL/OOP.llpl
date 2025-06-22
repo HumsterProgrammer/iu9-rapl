@@ -1,0 +1,10 @@
+
+(ifndef OOP_h
+(const OOP_h "=" 0)
+(include "stdlib.llpl")
+
+(struct VTableEntry
+    (VTableEntry_function ptr)
+    (VTableEntry_offset int)
+)
+)
