@@ -31,7 +31,7 @@
     (call stringOut testStr)
     
     (i "=" 1)
-    (while ((L i) "<" 2)
+    (while ((L i) "<" 10)
         (gc-alloc One Point)
         (if ((L One) "==" 0)
             (call stringOut errorMsg)

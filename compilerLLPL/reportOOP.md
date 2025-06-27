@@ -1,3 +1,44 @@
+% Лабораторная работа № 4. «Компиляция объектно-ориентированного языка»
+% 10 июня 2025 г.
+% Денис Кочетков, ИУ9-61Б
+
+
+# Цель работы
+
+Целью данной работы является ознакомление с компиляцией средств объектно-ориентированного программирования.
+
+# Индивидуальный вариант
+
+НУИЯП++ с виртуальным множественным наследованием.
+
+# Реализация и тестирование
+
+Для реализации объектно-ориентированных конструкций компилятор из лабораторной №3
+ был расширен дополнительными возможностями. Такими как:
+- простой макропроцессор, производящий соответвующие ему замены конструкций
+    `include`, `ifdef`, `ifndef`, `const`(использовалось вместо `define` языка С), `comment`
+    Это было сделано, для удобвства сборки программы из нескольких файлов,
+    а также добавления библиотеки поддержки времени исполнения, написанную на НУИЯП.
+- конструкции `++`, `--`, `+=`, `*=`, `-=`, `/=`, `->` как синтаксический сахар 
+    с семантическими оптимизациями для удобства написания циклов и работе с ссылками.
+- приведенные на слайдах примеры расширения языка для обработки строк из символов-литер Рефал,
+    а также динамическое определение размера `var` для удобства объявления строк для отладочного вывода.
+
+Библиотека `OOP.llpl`
+```
+(ifndef OOP_h
+    (const OOP_h "=" 0)
+    (include "stdlib.llpl")
+
+    (struct VTableEntry
+        (VTableEntry_function ptr)
+        (VTableEntry_offset int)
+    )
+)
+```
+
+Файл компилятора `compilerLLPL.ref`
+```
 *$FROM LibraryEx
 $EXTERN ArgList, Map, LoadExpr;
 
@@ -22,8 +63,10 @@ InitCompiler{
     /**/ = <Br libPath '=' '.'>
 }
 
-/*В время компиляции указывается путь к библиотекам. команда include будет пытаться искать библиотеки именно в этой директории.
- Сделал так, чтобы не мучаться с адресациями директорий. Если не указать будет по-умолчанию использоваться текущая директория*/
+/*В время компиляции указывается путь к библиотекам. 
+команда include будет пытаться искать библиотеки именно в этой директории.
+ Сделал так, чтобы не мучаться с адресациями директорий. 
+ Если не указать будет по-умолчанию использоваться текущая директория*/
 ParseCommandArgs{
     /*empty*/ = /*empty*/;
     ('lib=' e.LibPath) e.Tail = <Br libPath '=' e.LibPath> <ParseCommandArgs e.Tail>;
@@ -47,9 +90,11 @@ $ENTRY LLPL_MacroPreprocess{
     
     (comment e.smth) = /*erase*/; /*Очищает комментарии*/
     
-    (include s.FileName) = <LLPL_MacroPreprocess <LoadExpr <Cp libPath>'/'<Explode s.FileName>>>; /*(include "lib.h")*/
+    (include s.FileName) = 
+        <LLPL_MacroPreprocess <LoadExpr <Cp libPath>'/'<Explode s.FileName>>>; /*(include "lib.h")*/
     
-    /*Немного костыльно: вместо сишного define использую const, которые теперь можно объявить где угодно в программе*/
+    /*Немного костыльно: вместо сишного define использую const,
+     которые теперь можно объявить где угодно в программе*/
     (const s.Name "=" t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value =
 	    <AddGlobal s.Name s.Value> <Prout ';' (const s.Name "=" s.Value) >;
     
@@ -79,8 +124,8 @@ MakeBaseName{
 /*Функция компиляции дерева программы, считанного из файла*/
 Compile{
 	e.Program,
-	<DynMem_CountRefs e.Program 0> : 
-	    s.Count = <Prout <LLPL_GenDefinition (var global_refs__ 1 "=" s.Count)>> <Map LLPL_GenDefinition e.Program>;
+	<DynMem_CountRefs e.Program 0> : s.Count = 
+	<Prout <LLPL_GenDefinition (var global_refs__ 1 "=" s.Count)>> <Map LLPL_GenDefinition e.Program>;
 }
 
 DynMem_CountRefs{
@@ -96,13 +141,17 @@ $ENTRY LLPL_GenDefinition{
 	    <AddGlobal s.Name s.Size> ';' (struct s.Name e.Fields)'\n';
 	
 	(var s.Name "=" e.Definition) =
-	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) <Count e.Definition>> '; '(var s.Name "=" e.Definition)'\n';
+	    '\n:_' <Explode s.Name> 
+	    '\n' <GenVar (e.Definition) <Count e.Definition>> 
+	    '; '(var s.Name "=" e.Definition)'\n';
 	
 	(var s.Name t.ConstExpr), <EvalExpr t.ConstExpr> : s.Value = 
 	    '\n:_' <Explode s.Name> '\n' <GenVar () s.Value> '; ' (var s.Name s.Value)'\n';
 	
 	(var s.Name t.ConstExpr "=" e.Definition), <EvalExpr t.ConstExpr> : s.Value = 
-	    '\n:_' <Explode s.Name> '\n' <GenVar (e.Definition) s.Value> '; '(var s.Name s.Value "=" e.Definition)'\n';
+	    '\n:_' <Explode s.Name> 
+	    '\n' <GenVar (e.Definition) s.Value> 
+	    '; '(var s.Name s.Value "=" e.Definition)'\n';
 	
 	(function s.Name (e.Params) e.Body) = 
 	    '\n'<GenFunction s.Name (e.Params) e.Body> '\n';
@@ -201,7 +250,8 @@ $ENTRY LLPLpp_GenClassDescent{
 }
 
 $ENTRY LLPLpp_GenClassVirtualTableField{
-    s.ClassName (method s.Name (this e.Args) e.Code) = (<Implode <Explode s.ClassName> '_' <Explode s.Name>> VTableEntry);
+    s.ClassName (method s.Name (this e.Args) e.Code) = 
+        (<Implode <Explode s.ClassName> '_' <Explode s.Name>> VTableEntry);
 }
 $ENTRY LLPLpp_GenClassVirtualFunction{
     s.ClassName (method s.Name (this e.Args) e.Code),
@@ -223,13 +273,15 @@ $ENTRY LLPLpp_GenClassVirtualMethodMetka{
         <Implode <Explode s.ClassName>'__'<Explode s.Name>> 0;
 }
 $ENTRY LLPLpp_GenClassVirtualTableFieldsWithDescent{
-    s.Name s.Ancesstor = (<Implode <Explode s.Name>'__'<Explode s.Ancesstor>> <Implode <Explode s.Ancesstor>'_core__'>)
+    s.Name s.Ancesstor = 
+        (<Implode <Explode s.Name>'__'<Explode s.Ancesstor>> <Implode <Explode s.Ancesstor>'_core__'>)
 }
 $ENTRY LLPLpp_GenClassDeltas{
     s.Name s.Ancesstor = (<Implode <Explode s.Name>'__'<Explode s.Ancesstor>'_offset__'> 1)
 }
 $ENTRY LLPLpp_GenMethodsMetkas{
-    s.Name s.Delta (method s.Method (e.Args) e.Body) = <Implode <Explode s.Name>'__'<Explode s.Method>> s.Delta;
+    s.Name s.Delta (method s.Method (e.Args) e.Body) = 
+        <Implode <Explode s.Name>'__'<Explode s.Method>> s.Delta;
 }
 $ENTRY LLPLpp_GenMethodsMetkasByName{
     s.Name s.Delta s.Method = s.Method s.Delta;
@@ -268,14 +320,17 @@ $ENTRY LLPLpp_recursiveVtbl{
     <Implode <Explode s.BaseClassName> '__' <Explode s.Ancesstor>> : s.Delta,
     <Cp <Implode <Explode s.Ancesstor>'__ancesstors__'>> : e.ParentAncesstors
      = 
-    (var <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>'_vtbl__' > <Implode <Explode s.Ancesstor>'_class__'>
+    (var <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>'_vtbl__' >
+     <Implode <Explode s.Ancesstor>'_class__'>
         "=" 
         <Map (LLPLpp_GenMethodsMetkasByName s.BaseClassName s.Delta) e.Methods>
         <Map (LLPLpp_recursiveVtblDeltas s.BaseClassName s.Delta) e.ParentAncesstors>
     );
 }
 $ENTRY LLPLpp_GenInit{
-    s.BaseClassName s.Ancesstor = (call <Implode 'init__'<Explode s.Ancesstor>> (thisPtr "->" <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>>));
+    s.BaseClassName s.Ancesstor = 
+    (call <Implode 'init__'<Explode s.Ancesstor>> 
+        (thisPtr "->" <Implode <Explode s.BaseClassName>'__'<Explode s.Ancesstor>>));
 }
 
 /**************************OPERATORS*******************************/
@@ -352,11 +407,13 @@ Fill{
 GenFunctionProlog{
 	(e.Params)(e.Refs)(e.Vars),
 	<SetDeltaRefs e.Refs> : s.RefsDelta (e.CompiledInit),
-	<NewLocal> (<SetDeltaParams e.Params 2>)(<SetDeltaVars e.Vars <Add s.RefsDelta 1>>) : (e.1) (s.LocalVarsRes),
+	<NewLocal> (<SetDeltaParams e.Params 2>)
+	(<SetDeltaVars e.Vars <Add s.RefsDelta 1>>) : (e.1) (s.LocalVarsRes),
 	<Sub s.LocalVarsRes <Add s.RefsDelta 1>> :
 	{
         0, <SetLocalCount 0> : e.2 = GETFP GETSP SETFP '\n' e.CompiledInit ';refs compile\n';
-        s.Number, <SetLocalCount s.Number> : e.2 = GETFP GETSP SETFP '\n' e.CompiledInit '\n' GETSP s.Number SUB SETSP '\n';
+        s.Number, <SetLocalCount s.Number> : e.2 =
+         GETFP GETSP SETFP '\n' e.CompiledInit '\n' GETSP s.Number SUB SETSP '\n';
     };
 }
 
@@ -396,7 +453,8 @@ EpilogName{
 /*Конкатенирует к базовому имени уникальный номер(AUTOINCREMENT(0,1)) для создания уникальной метки*/
 GenConsMetka{
 	e.BaseName, <Dg blockNumber> : s.Number, <Cp function> : s.Name s.Num
-	= e.BaseName '_' <Explode s.Name> '_' <Cp blockName>'_'<Symb s.Number> <Br blockNumber '=' <Add s.Number 1>>
+	= e.BaseName '_' <Explode s.Name> '_' <Cp blockName>'_'<Symb s.Number> 
+	<Br blockNumber '=' <Add s.Number 1>>
 }
 
 
@@ -462,7 +520,9 @@ $ENTRY GenOperator{
 	    ';' (call t.Name e.Arguments) '\n';
 	
 	(if t.BoolExpr e.TrueBody else e.FalseBody),
-		(<GenConsMetka 'if_true'>)(<GenConsMetka 'if_false'>)(<GenConsMetka 'if_out'>) : (e.true)(e.false)(e.out)
+		(<GenConsMetka 'if_true'>)
+		(<GenConsMetka 'if_false'>)
+		(<GenConsMetka 'if_out'>) : (e.true)(e.false)(e.out)
 	 = <GenBool t.BoolExpr (e.true)(e.false)> '\n'
 	 	':'e.true'\n' <GenBody e.TrueBody> e.out' JMP \n'
 		':'e.false'\n' <GenBody e.FalseBody> ':'e.out '\n';
@@ -473,7 +533,9 @@ $ENTRY GenOperator{
 	 	':'e.true'\n' <GenBody e.TrueBody> ':'e.out'\n';
 	 	
 	(while t.BoolExpr e.Body),
-		(<GenConsMetka 'while_loop'>)(<GenConsMetka 'while_true'>)(<GenConsMetka 'while_out'>) : (e.loop)(e.true)(e.out)
+		(<GenConsMetka 'while_loop'>)
+		(<GenConsMetka 'while_true'>)
+		(<GenConsMetka 'while_out'>) : (e.loop)(e.true)(e.out)
 	 = ':'e.loop'\n' <GenBool t.BoolExpr (e.true)(e.out)> '\n'
 		':'e.true'\n' <GenBody e.Body> e.loop' JMP\n' ':'e.out'\n';
 	
@@ -487,7 +549,9 @@ $ENTRY GenOperator{
 	(asm e.ASM) = e.ASM ';ASM\n';
 	
 	(block (var e.LocalVars) e.Code), 
-	(<NewLocal><SetLocalCount <SetDeltaVars e.LocalVars <Cp localCount>>> <Cp localCount>) : (e.1 s.BaseNumber ), 
+	(<NewLocal>
+	    <SetLocalCount <SetDeltaVars e.LocalVars <Cp localCount>>>
+	    <Cp localCount>) : (e.1 s.BaseNumber ), 
 	(<GenBody e.Code>)(<EndLocal>) : (e.GeneratedCode) (e.2),
 	 <Sub s.BaseNumber <Cp localCount>> : s.Delta
 	    = GETSP s.Delta SUB SETSP '\n' /*выделение памяти под локальные переменные*/
@@ -504,7 +568,8 @@ $ENTRY GenOperator{
 	
 	(t.LeftExpr ":-" t.RightExpr) = <GenOperator (t.LeftExpr "=" t.RightExpr)>;
 	
-	(gc-alloc t.Expr s.Type) = <GenOperator (t.Expr "=" (call alloc__ s.Type <Implode 'NREFS_' <Explode s.Type> '__'>))>;
+	(gc-alloc t.Expr s.Type) = 
+	    <GenOperator (t.Expr "=" (call alloc__ s.Type <Implode 'NREFS_' <Explode s.Type> '__'>))>;
 	
 	(ref-return t.Expr) = <GenOperator (return t.Expr)>;
 	
@@ -540,7 +605,10 @@ GenBool{
 	
 	(t.LeftExpr s.RelOp t.RightExpr) (e.TrueMetka)(e.FalseMetka),
 	("<" JLT)(">" JGT)("==" JEQ)("<=" JLE)(">=" JGE)("<>" JNE) : e.1(s.RelOp s.Command)e.2 
-		= <LLPL_GenExpr t.LeftExpr 0> <LLPL_GenExpr t.RightExpr 1> CMP e.TrueMetka ' ' s.Command e.FalseMetka ' ' JMP;
+		= <LLPL_GenExpr t.LeftExpr 0> 
+		<LLPL_GenExpr t.RightExpr 1> 
+		CMP 
+		e.TrueMetka ' ' s.Command e.FalseMetka ' ' JMP;
 	
 	(not t.BoolExpr)(e.TrueMetka)(e.FalseMetka) = <GenBool t.BoolExpr (e.FalseMetka)(e.FalseMetka)>;
 }
@@ -562,12 +630,14 @@ GenStruct{
 	    <Add <EvalExpr t.ConstExpr> s.Size> : s.NewSize = <GenStruct (e.Tail) s.NewSize>;
 	
 	((s.Name t.ConstExpr) e.Tail) s.Size, 
-	    <Add <EvalExpr t.ConstExpr> s.Size> : s.NewSize = <AddGlobal s.Name s.Size> <GenStruct (e.Tail) s.NewSize>;
+	<Add <EvalExpr t.ConstExpr> s.Size> : s.NewSize =
+	         <AddGlobal s.Name s.Size> <GenStruct (e.Tail) s.NewSize>;
 	
 	(/*empty*/) s.Size = s.Size;
 }
 
-/*Вспомогательная функция: вычисляет значение константного выражения. Необходимо для генерации структур и прочих.*/
+/*Вспомогательная функция: вычисляет значение константного выражения. 
+Необходимо для генерации структур и прочих.*/
 EvalExpr{
 	s.Name, <Type s.Name> : 'W' e.1, <GetConst s.Name> : Found e.Value, 
 	e.Value : {
@@ -666,7 +736,8 @@ $ENTRY LLPL_GenExpr{
 	
 	
 	(t.LeftExpr s.BinOp t.RightExpr) s.Depth,
-	("+" ADD) ("-" SUB) ("*" MUL) ("/" DIV) ("%" MOD) ("&" AND) ("|" OR) ("~" XOR) : e.1 (s.BinOp s.GenOp) e.2 = 
+	("+" ADD) ("-" SUB) ("*" MUL) ("/" DIV) 
+	("%" MOD) ("&" AND) ("|" OR) ("~" XOR) : e.1 (s.BinOp s.GenOp) e.2 = 
 	    <LLPL_GenExpr t.LeftExpr s.Depth>            /*... value1*/
 	    <LLPL_GenExpr t.RightExpr <Add s.Depth 1>>   /*... value1 value2*/
 	    s.GenOp;                                     /*... value1 value2 operation*/
@@ -677,7 +748,9 @@ $ENTRY LLPL_GenExpr{
 	
 	(let (var e.LocalVars) e.Code t.Expr) s.Depth,
 	<Add <Cp localCount> s.Depth> : s.Number,
-	(<NewLocal><SetLocalCount <SetDeltaVars e.LocalVars s.Number>> <Cp localCount>) : (e.1 s.BaseNumber ), 
+	(<NewLocal>
+	    <SetLocalCount <SetDeltaVars e.LocalVars s.Number>>
+	     <Cp localCount>) : (e.1 s.BaseNumber ), 
 	(<GenBody e.Code> <LLPL_GenExpr t.Expr 0>)(<EndLocal>) : (e.GeneratedCode) (e.2),
 	 <Sub s.BaseNumber s.Number> : s.Delta =
 	    GETSP s.Delta SUB SETSP ';start let\n'  /*... empt1 empt2 ... enptn*/
@@ -739,3 +812,161 @@ Reverse{
 	t.A e.Tail = <Reverse e.Tail> t.A;
 	/*empty*/ = /*empty*/;
 }
+```
+
+## Тестирование
+
+Для тестирования объектно-ориентированных конструкций были написаны следующие программы:
+
+Файл `testABC.llpl`
+```
+(include "OOP.llpl")
+
+(class A()
+    (fields (x int))
+    (method print(this)
+        (call out 'A')
+    )
+)
+(class B1(A)
+    (fields)
+    (method print(this)
+        (call out 'B')
+        (call out '1')
+    )
+)
+(class B2(A)
+    (fields)
+    (method print(this)
+        (call out 'B')
+        (call out '2')
+    )
+)
+(class C(B1 B2)
+    (fields )
+    (method print(this)
+        (call out 'C')
+    )
+)
+
+(var testObj C)
+
+(function main()
+
+    (init testObj C)
+    
+    (mcall (upcast testObj from C to A) A_print)
+    (call out '\n')
+    (mcall (upcast testObj from C to B1) B1_print)
+    (call out '\n')
+    (mcall (upcast testObj from C to B2) B2_print)
+    (call out '\n')
+    (mcall testObj C_print)
+    (return 0)
+)
+```
+
+Вывод интерпретатора после компиляции программы
+```
+Loaded 526 words
+A
+B1
+B2
+C
+0
+```
+
+Файл `testClass.llpl`
+```
+
+(include "stdlib.llpl")
+(include "OOP.llpl")
+
+(class Point ()
+    (fields (Point_x int) (Point_y int))
+    
+    (method printPoint (this) 
+        (call out '(')
+        (call numberOut (L (this "->" Point_x)))
+        (call out ' ')
+        (call numberOut (L (this "->" Point_y))) 
+        (call out ')')
+    )
+)
+
+(var AnimalText "=" 'Animal\n' 0)
+(var DogText "=" 'Dog\n' 0)
+(var goodDogText "=" 'good dog\n' 0)
+(var barkText "=" 'BARK!\n' 0)
+
+(class Animal()
+    (fields )
+    (method print(this)
+        (call stringOut AnimalText)
+    )
+)
+(class Dog (Animal)
+    (fields (number 1))
+    (method print(this)
+        (call stringOut DogText)
+    )
+    (method bark(this)
+        ((this "->" number) "+=" 10)
+        (call stringOut barkText)
+    )
+)
+(class GoodDog(Dog)
+    (fields )
+    (method print(this)
+        (call stringOut goodDogText)
+    )
+)
+
+
+(var testPoint Point)
+(var Buddy GoodDog)
+
+
+(function main()
+    (var (testPoint Point))
+    
+    (init testPoint Point)
+    (init Buddy GoodDog)
+    
+    ((testPoint "+" Point_x) "=" 1)
+    ((testPoint "+" Point_y) "=" 2)
+    
+    (mcall testPoint Point_printPoint)
+    (call out '\n')
+    
+    (mcall (upcast Buddy from GoodDog to Dog) Dog_bark)
+    (mcall (upcast Buddy from GoodDog to Dog) Dog_bark)
+    (call numberOut (L ((upcast Buddy from GoodDog to Dog) "+" number)))
+    
+    (call out '\n')
+    (return 0)
+)
+```
+
+Вывод интерпретатора после выполнения скомпилированного кода
+```
+Loaded 602 words
+(1 2)
+BARK!
+BARK!
+20
+
+0
+```
+
+Укажу, что первая и последняя строка - отладочный вывод интерпретатора.
+Первая строка - количество загруженных слов в память интерпретатора,
+вторая - код возврата функции `main`.
+
+# Вывод
+
+В ходе выполнения лабораторной работы, я получил навыки расширения компилятора языка дополнительными
+высокоуровневыми конструкциями, которые компилируются в набор базовых конструкций, 
+позволяющие задействовать ООП в НУИЯП. Кроме этого, в время отладки компилятора, были найдены конструкции
+и моменты, которые представлялись избыточными для постоянного повторения, и они были выделены в
+дополнительные конструкции расширяющие исходный язык базового НУИЯП, которые код более читаемым и коротким.

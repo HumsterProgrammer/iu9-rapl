@@ -42,37 +42,10 @@
     )
 )
 
-(class A()
-    (fields )
-    (method test (this)
-        (call out 'A')
-    )
-)
-(class B1(A)
-    (fields )
-    (method test(this)
-        (call out 'B')
-        (call out '1')
-    )
-)
-(class B2(A)
-    (fields )
-    (method test(this)
-        (call out 'B')
-        (call out '2')
-    )
-)
-(class C(B1 B2)
-    (fields )
-    (method test(this)
-        (call out 'C')
-    )
-)
 
-
-(comment (var testPoint Point))
+(var testPoint Point)
 (var Buddy GoodDog)
-(var testObj C)
+
 
 (function main()
     (var (testPoint Point))
@@ -84,16 +57,12 @@
     ((testPoint "+" Point_y) "=" 2)
     
     (mcall testPoint Point_printPoint)
+    (call out '\n')
+    
     (mcall (upcast Buddy from GoodDog to Dog) Dog_bark)
     (mcall (upcast Buddy from GoodDog to Dog) Dog_bark)
     (call numberOut (L ((upcast Buddy from GoodDog to Dog) "+" number)))
     
     (call out '\n')
-    
-    (init testObj C)
-    (mcall testObj C_test)
-    (mcall (upcast testObj from C to B1) B1_test)
-    (mcall (upcast testObj from C to B2) B2_test)
-    (mcall (upcast testObj from C to A) A_test)
     (return 0)
 )

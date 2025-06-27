@@ -1,0 +1,269 @@
+(include "DynMem.llpl")
+
+(comment Простой лексер для следующих доменов
+    number ::= "[0-9]+"
+    lparen ::= "("
+    rparen ::= ")"
+    plus ::= "+"
+    star ::= "*"
+    
+    "================"
+    <Expr> ::= <Factor> ("plus" <Factor>)*
+    <Factor> ::= <Term> ("star" <Term>)*
+    <Term> ::= "number" | "lparen" <Expr> "rparen"
+)
+
+(const EOF_TAG "=" 0)
+(var EOF_STRING "=" 'EOF' 0)
+
+(const NUMBER_TAG "=" 1)
+(var NUMBER_STRING "=" 'NUMBER' 0)
+
+(const LPAREN_TAG "=" 2)
+(var LPAREN_STRING "=" 'LPAREN' 0)
+
+(const RPAREN_TAG "=" 3)
+(var RPAREN_STRING "=" 'RPAREN' 0)
+
+(const PLUS_TAG "=" 4)
+(var PLUS_STRING "=" 'PLUS' 0)
+
+(const STAR_TAG "=" 5)
+(var STAR_STRING "=" 'STAR' 0)
+
+(dynvar Token 
+    (refs Token_next)
+    
+    (Token_tag int)(Token_pos int)(Token_attr int)
+)
+(dynvar TokenList
+    (refs TokenList_first TokenList_last)
+)
+
+(refs listOfToken)
+
+(comment "Читает из последовательного ввода пока не встретит перевод строки")
+(var errorMsg "=" 'invalid symbol ' 0)
+(function tokenize()
+    (var (currentChar int)(pos int)(attr int)(startpos int))
+    (pos "=" 1)
+    (attr "=" 0)
+    
+    (currentChar "=" (call in))
+    (while ((L currentChar) "<>" '\n')
+        (if ((L currentChar) "==" ' ')
+            (currentChar "=" (call in))
+            (pos "++")
+        else
+        (if ((L currentChar) "==" '(')
+            (call addToken LPAREN_TAG (L pos) 0)
+            (currentChar "=" (call in))
+            (pos "++")
+        else
+        (if ((L currentChar) "==" ')')
+            (call addToken RPAREN_TAG (L pos) 0)
+            (currentChar "=" (call in))
+            (pos "++")
+        else
+        (if ((L currentChar) "==" '+')
+            (call addToken PLUS_TAG (L pos) 0)
+            (currentChar "=" (call in))
+            (pos "++")
+        else
+        (if ((L currentChar) "==" '*')
+            (call addToken STAR_TAG (L pos) 0)
+            (currentChar "=" (call in))
+            (pos "++")
+        else
+        (if ((call checkDigit (L currentChar)) "==" 1)
+            (startpos "=" (L pos))
+            (while ((call checkDigit (L currentChar)) "==" 1)
+                (attr "=" (((L attr) "*" 10) "+"
+                    ((L currentChar) "-" '0')
+                ))
+                (currentChar "=" (call in))
+                (pos "++")
+            )
+            (call addToken NUMBER_TAG (L startpos) (L attr))
+            (attr "=" 0)
+            
+        else
+            (call stringOut errorMsg)
+            (call out '"')
+            (call out (L currentChar))
+            (call out '"')
+            (call out '\n')
+            (call halt 4)    
+        ))))))
+    )
+    
+    (call addToken EOF_TAG (L pos)(L attr))
+)
+(function checkDigit(character)
+    (if (((L character) ">=" '0') and ((L character) "<=" '9'))
+        (return 1)
+    )
+    (return 0)
+)
+
+(function addToken(tag position attribute)
+    (var (refs last new))
+    
+    (gc-alloc new Token)
+    (last ":-" (L (listOfToken "->" TokenList_last)))
+    ((new "->" Token_next) ":-" 0)
+    ((new "->" Token_tag) "=" (L tag))
+    ((new "->" Token_pos) "=" (L position))
+    ((new "->" Token_attr) "=" (L attribute))
+    (if ((L last) "<>" 0)
+        ((last "->" Token_next) "=" (L new))
+    )
+    ((listOfToken "->" TokenList_last) ":-" (L new))
+    
+    (if ((L (listOfToken "->" TokenList_first)) "==" 0)
+        ((listOfToken "->" TokenList_first) "=" (L new))
+    )   
+)
+(function printTag(tag)
+    (if ((L tag) "==" EOF_TAG)
+        (call stringOut EOF_STRING)
+        (return 0)
+    )
+    (if ((L tag) "==" NUMBER_TAG)
+        (call stringOut NUMBER_STRING)
+        (return 0)
+    )
+    (if ((L tag) "==" LPAREN_TAG)
+        (call stringOut LPAREN_STRING)
+        (return 0)
+    )
+    (if ((L tag) "==" RPAREN_TAG)
+        (call stringOut RPAREN_STRING)
+        (return 0)
+    )
+    (if ((L tag) "==" PLUS_TAG)
+        (call stringOut PLUS_STRING)
+        (return 0)
+    )
+    (if ((L tag) "==" STAR_TAG)
+        (call stringOut STAR_STRING)
+        (return 0)
+    )
+    (call numberOut (L tag))
+)
+(function printToken(tokenRef)
+    (call printTag (L (tokenRef "->" Token_tag)))
+    (call out '(')
+    (call numberOut (L (tokenRef "->" Token_pos)))
+    (call out ')')
+    (call out ':')
+    (call out ' ')
+    (call numberOut (L (tokenRef "->" Token_attr)))
+)
+(function printListOfToken()
+    (var (refs iterator))
+    (iterator ":-" (L (listOfToken "->" TokenList_first)))
+    (while ((L iterator) "<>" 0)
+        (call printToken (L iterator))
+        (call out '\n')
+        (iterator "=" (L (iterator "->" Token_next)))
+    )
+)
+
+(comment "===============parse===================")
+(comment "Парсит последовательность токенов listOfToken и выводит расчитанное значение выражения")
+
+(refs parseIteratorRef)
+(var parseErrorMsg1 "=" 'invalid token '0)
+(var parseErrorMsg2 "=" ', expected '0)
+
+(function peekToken()
+    (return (L parseIteratorRef))
+)
+(function parseToken(tag)
+    (var (refs token))
+    
+    (token ":-" (call peekToken))
+    (if ((L(token "->" Token_tag)) "<>" (L tag))
+        (call stringOut parseErrorMsg1)
+        (call printToken (L token))
+        (call stringOut parseErrorMsg2)
+        (call printTag (L tag))
+        (call out '\n')
+        (call halt 5)
+    )
+    (parseIteratorRef ":-" (L (parseIteratorRef "->" Token_next)))
+)
+
+(function parseExpr()
+    (var (refs token)(value int))
+    
+    (value "=" (call parseFactor))
+    
+    (token ":-" (call peekToken))
+    (while ((L (token "->" Token_tag)) "==" PLUS_TAG)
+        
+        (call parseToken PLUS_TAG)
+        (value "+=" (call parseFactor))
+        (token ":-" (call peekToken))
+    )
+    
+    (return (L value))
+)
+(function parseFactor()
+    (var (value int)(tmp int))
+    
+    (value "=" (call parseTerm))
+    (token ":-" (call peekToken))
+    (while ((L (token "->" Token_tag)) "==" STAR_TAG)
+        (call parseToken STAR_TAG)
+        (value "*=" (call parseTerm))
+        (token ":-" (call peekToken))
+    )
+
+    (return (L value))
+)
+(function parseTerm()
+    (var (refs token)(value int))
+    
+    (token ":-" (call peekToken))
+    (if ((L (token "->" Token_tag)) "==" NUMBER_TAG)
+        (call parseToken NUMBER_TAG)
+        (return (L (token "->" Token_attr)))
+    else
+        (call parseToken LPAREN_TAG)
+        (value "=" (call parseExpr))
+        (call parseToken RPAREN_TAG)
+        (return (L value))
+    )
+)
+
+
+(var separator "=" '==============\n' 0)
+(var answerMsg "=" 'Result: '0)
+(function main()
+    (var (value int))
+    (call init_heap)
+    (gc-alloc listOfToken TokenList)
+    
+    (call tokenize)
+    (call printListOfToken)
+    (call stringOut separator)
+    
+    (parseIteratorRef ":-" (L (listOfToken "->" TokenList_first)))
+    (value "=" (call parseExpr))
+    (if ((L (parseIteratorRef "->" Token_tag)) "<>" EOF_TAG)
+        (call stringOut parseErrorMsg1)
+        (call printToken (L token))
+        (call stringOut parseErrorMsg2)
+        (call printTag EOF_TAG)
+        (call out '\n')
+        (call halt 5)
+    )
+    
+    (call stringOut answerMsg)
+    (call numberOut (L value))
+    (call out '\n')
+    (return 0)
+    
+)

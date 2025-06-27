@@ -1,0 +1,64 @@
+(struct Animal_core__
+    ("-" 1)
+)
+(struct Animal
+    ("-" Animal_core__)
+)
+(struct Animal_class
+    (Animal_print VTableEntry)
+)
+(function Animal_print() ...)
+(var Animal_vtbl__ Animal_class__ "="
+    Animal_print
+)
+
+(comment "class Dog")
+(struct Dog_core__
+    ("-" 1) ...
+)
+(struct Dog
+    ("-" Dog_core__)
+    (Dog__Animal Animal_core)
+)
+(struct Dog_class__
+    (Dog_print VTableEntry)
+    (Dog_bark VTableEntry)
+    (Dog__Animal_offset__ int)    
+)
+(function Dog_print() ...)
+(function Dog_bark() ...)
+(var Dog_vtbl__ Dog_class__ "="
+    Dog_print 0
+    Dog_bark 0
+    Dog__Animal
+)
+(var Dog_Animal_vtbl__ Animal_class "="
+    Animal_print Dog_Animal
+)
+
+(comment "class GoogDog")
+(struct GoodDog_core__
+    ("-" 1)
+)
+(struct GoodDog
+    ("-" GoodDog_core__)
+    (GoodDog__Dog Dog_core__)
+    (GoodDog__Animal Animal_core__)
+)
+(struct GoodDog_class__
+    (GoodDog_print VTableEntry)
+    (GoodDog__Dog_offset__ int)
+    (GoodDog__Animal_offset__ int)
+)
+(function GoodDog_print()...)
+(var GoodDog_vtbl__ GoodDog_class__ "="
+    GoodDog_print 0
+    GoodDog_Dog
+    GoodDog_Animal
+)
+(var GoodDog__Dog_vtbl__ Dog_class__ "="
+    Dog_print GoodDog__Dog
+    Dog_bark GoodDog__Dog
+    (GoodDog__Animal "-" GoodDog__Dog)
+)
+
