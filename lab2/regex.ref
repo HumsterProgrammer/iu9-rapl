@@ -37,14 +37,6 @@ t.RegEx ::= EmptySet
 */
 
 Simplify{
-	(t.RegEx Concat EmptySet) = EmptySet;
-	(EmptySet Concat t.RegEx) = EmptySet;
-	(EmptySet Union t.RegEx) = <Simplify t.RegEx>;
-	(t.RegEx Union EmptySet) = <Simplify t.RegEx>;
-	(EmptyWord Concat t.RegEx) = <Simplify t.RegEx>;
-	(t.RegEx Concat EmptyWord) = <Simplify t.RegEx>;
-	(EmptySet) Star = EmptyWord;
-	(EmptyWord) Star = EmptyWord;
 	(t.A Union t.B),
 		(<Simplify t.A>) (<Simplify t.B>) : {
 			(t.RegEx) (EmptySet) = t.RegEx;
@@ -59,6 +51,10 @@ Simplify{
 			(EmptyWord)(t.RegEx) = t.RegEx;
 			(t.RegA) (t.RegB) = (t.RegA Concat t.RegB);
 		};
-	(t.RegEx) Star = (<Simplify t.RegEx>) Star;
+	(t.RegEx Star), (<Simplify t.RegEx>) : {
+		(EmptySet) = EmptyWord;
+		(EmptyWord) = EmptyWord;
+		(t.Reg) = (t.Reg Star)
+	};
 	t.Other = t.Other;
 }
