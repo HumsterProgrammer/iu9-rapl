@@ -1,0 +1,73 @@
+(include "DynMem.llpl")
+
+(dynvar Tree
+    (refs Tree_left Tree_right)
+    
+    (Tree_value int)
+)
+
+(function initTree ()
+    (var (refs returnRef tmpRef leftRef rightRef))
+    (comment "Для тестирования построю дерево")
+    (comment 
+        0 -> 1, 2
+        1 -> 3 -> 4
+        2 -> 5, 6
+    )
+    (gc-alloc leftRef Tree)
+    ((leftRef "->" Tree_value) "=" 4)
+    (rightRef ":-" 0)
+    
+    (gc-alloc returnRef Tree)
+    ((returnRef "->" Tree_left) ":-" (L leftRef))
+    ((returnRef "->" Tree_right) ":-" (L rightRef))
+    ((returnRef "->" Tree_value) "=" 3)
+    
+    (leftRef ":-" (L returnRef))
+    (rightRef ":-" 0)
+    (gc-alloc returnRef Tree)
+    ((returnRef "->" Tree_left) ":-" (L leftRef))
+    ((returnRef "->" Tree_right) ":-" (L rightRef))
+    ((returnRef "->" Tree_value) "=" 1)
+    
+    (tmpRef ":-" (L returnRef))
+    
+    (gc-alloc leftRef Tree)
+    ((leftRef "->" Tree_value) "=" 5)
+    (gc-alloc rightRef Tree)
+    ((rightRef "->" Tree_value) "=" 6)
+    
+    (gc-alloc returnRef Tree)
+    ((returnRef "->" Tree_left) ":-" (L leftRef))
+    ((returnRef "->" Tree_right) ":-" (L rightRef))
+    ((returnRef "->" Tree_value) "=" 2)
+    
+    (leftRef ":-" (L tmpRef))
+    (rightRef ":-" (L returnRef))
+    (gc-alloc returnRef Tree)
+    ((returnRef "->" Tree_left) ":-" (L leftRef))
+    ((returnRef "->" Tree_right) ":-" (L rightRef))
+    ((returnRef "->" Tree_value) "=" 0)
+    
+    (ref-return (L returnRef))
+)
+(function DFS (treeRef)
+    (if ((L treeRef) "==" 0)
+        (return 0)
+    )
+    (call numberOut (L (treeRef "->" Tree_value)))
+    (call out '\n')
+    (call DFS (L (treeRef "->" Tree_left)))
+    (call DFS (L (treeRef "->" Tree_right)))
+)
+
+(function main()
+    (var (refs treeRef) (tmp int))
+    
+    (call init_heap)
+    
+    (treeRef ":-" (call initTree))
+    (asm "<initptr>")
+    (call DFS (L treeRef))
+    (return 0)
+)

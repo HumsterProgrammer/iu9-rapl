@@ -40,6 +40,10 @@
     (if ((L n) "==" 0)
         (call out '0')
     else
+        (if ((L n) "<" 0)
+            (call out '-')
+            (n "*=" ("-" 1))
+        )
         (call recursiveNumberOut__ (L n))
     )
 )
